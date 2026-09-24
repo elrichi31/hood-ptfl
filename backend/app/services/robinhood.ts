@@ -17,10 +17,19 @@ type Store = {
   codeVerifier?: string
 }
 
-const load = (): Store => (existsSync(STORE) ? JSON.parse(readFileSync(STORE, 'utf8')) : {})
+export const load = (): Store => {
+  // Fresh server volume: seed the store once from ROBINHOOD_AUTH (base64 of a local
+  // storage/robinhood.json). After that the file wins, since refreshed tokens land there.
+  const seed = process.env.ROBINHOOD_AUTH
+  if (!existsSync(STORE) && seed) {
+    mkdirSync('storage', { recursive: true })
+    writeFileSync(STORE, Buffer.from(seed, 'base64'), { mode: 0o600 })
+  }
+  return existsSync(STORE) ? JSON.parse(readFileSync(STORE, 'utf8')) : {}
+}
 const save = (patch: Store) => {
   mkdirSync('storage', { recursive: true })
-  writeFileSync(STORE, JSON.stringify({ ...load(), ...patch }, null, 2))
+  writeFileSync(STORE, JSON.stringify({ ...load(), ...patch }, null, 2), { mode: 0o600 })
 }
 
 /** OAuth state (client id, tokens, PKCE verifier) persisted in storage/robinhood.json. */

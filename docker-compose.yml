@@ -18,6 +18,8 @@ services:
       ALPHAVANTAGE_API_KEY: ${ALPHAVANTAGE_API_KEY:-}
       MARKETAUX_API_KEY: ${MARKETAUX_API_KEY:-}
       TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
+      # base64 of storage/robinhood.json, only read on first boot of an empty volume
+      ROBINHOOD_AUTH: ${ROBINHOOD_AUTH:-}
     volumes:
       - backend-storage:/src/build/storage # Robinhood OAuth tokens
       - backend-data:/src/build/tmp # SQLite (snapshots, news)
