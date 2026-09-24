@@ -1,0 +1,75 @@
+@import "@heroui/react/styles";
+
+/*
+ * Notion-style retheme of HeroUI's default tokens. Unlayered so it wins over
+ * HeroUI's `layer(theme)` defaults regardless of import order. Dark mode
+ * toggles the `data-theme` attribute on <html> (see ThemeToggle.tsx) — same
+ * attribute HeroUI's own dark block already keys off.
+ */
+:root {
+  --background: #f8f8f8;
+  --foreground: #1f2937;
+  --surface: #ffffff;
+  --surface-foreground: var(--foreground);
+  --surface-secondary: #f6f6f6;
+  --surface-hover: #f0f0f0;
+  --muted: #6b7280;
+  --secondary-foreground: #4b5563;
+  --border: #e5e7eb;
+  --separator: #e5e7eb;
+  --hatch: rgba(0, 0, 0, 0.035);
+  --accent: #2383e2;
+  --accent-foreground: #ffffff;
+  --accent-soft: color-mix(in oklab, var(--accent) 12%, transparent);
+  --accent-soft-foreground: var(--accent);
+  --danger: #e03e3e;
+  --success: #0f7b6c;
+  --warning: #d9a521;
+  --crypto: #c9750f; /* second categorical slot, allocation chart — validated with --accent via dataviz's validate_palette.js */
+  --radius: 0.5rem;
+  --field-radius: 0.5rem;
+  --surface-shadow: none;
+  --field-shadow: none;
+}
+
+:root[data-theme="dark"] {
+  --background: #141414;
+  --foreground: #e6e6e5;
+  --surface: #1c1c1c;
+  --surface-foreground: var(--foreground);
+  --surface-secondary: #222222;
+  --surface-hover: #2a2a2a;
+  --muted: #9b9a97;
+  --secondary-foreground: #b4b4b2;
+  --border: #2f2f2f;
+  --separator: #2f2f2f;
+  --hatch: rgba(255, 255, 255, 0.03);
+  --accent: #529cca;
+  --accent-foreground: #191919;
+  --accent-soft: color-mix(in oklab, var(--accent) 16%, transparent);
+  --accent-soft-foreground: var(--accent);
+  --danger: #ff7369;
+  --success: #4dab9a;
+  --warning: #e0b341;
+  --crypto: #b8791f;
+}
+
+@theme inline {
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+/* Tabular figures for every money/quantity value in the app. */
+.font-figures {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Diagonal hatch behind card headers (Kravio look). */
+.hatch {
+  background-image: repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 7px);
+}
