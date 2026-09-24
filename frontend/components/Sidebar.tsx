@@ -29,6 +29,7 @@ export const GENERAL: NavEntry[] = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
   { href: "/news", label: "News", icon: Newspaper },
   { href: "/politician-trades", label: "Politician trades", icon: Landmark },
+  { href: "/alerts", label: "Alerts", icon: BellRing },
 ];
 
 const SOON: SoonEntry[] = [
@@ -36,7 +37,6 @@ const SOON: SoonEntry[] = [
   { label: "AI Analyst", icon: Sparkles },
   { label: "Discover", icon: Compass },
   { label: "Risk", icon: ShieldAlert },
-  { label: "Alerts", icon: BellRing },
   { label: "Settings", icon: Settings },
 ];
 

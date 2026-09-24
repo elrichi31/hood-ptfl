@@ -1,0 +1,43 @@
+# Dokploy: set the ${VARS} in the Environment tab, and attach the domain to
+# service "frontend", port 3000. The backend is never exposed publicly.
+services:
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      TZ: UTC
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3333
+      LOG_LEVEL: info
+      APP_URL: http://backend:3333
+      SESSION_DRIVER: cookie
+      APP_KEY: ${APP_KEY}
+      BACKEND_TOKEN: ${BACKEND_TOKEN}
+      FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
+      ALPHAVANTAGE_API_KEY: ${ALPHAVANTAGE_API_KEY:-}
+      MARKETAUX_API_KEY: ${MARKETAUX_API_KEY:-}
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
+    volumes:
+      - backend-storage:/src/build/storage # Robinhood OAuth tokens
+      - backend-data:/src/build/tmp # SQLite (snapshots, news)
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NODE_ENV: production
+      BACKEND_URL: http://backend:3333
+      BACKEND_TOKEN: ${BACKEND_TOKEN}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL}
+      ALLOWED_EMAILS: ${ALLOWED_EMAILS}
+    volumes:
+      - frontend-storage:/app/storage # Better Auth users/sessions
+
+volumes:
+  backend-storage:
+  backend-data:
+  frontend-storage:

@@ -113,4 +113,19 @@ test.group('news: groupArticles', () => {
     ])
     assert.lengthOf(clusters, 2)
   })
+
+  test('TypeSafe storyId overrides headline similarity both ways', ({ assert }) => {
+    const clusters = groupArticles([
+      // Same words, but TypeSafe said different events.
+      article({ headline: 'Nvidia stock falls on China news', tickers: ['NVDA'], storyId: 1 }),
+      article({ headline: 'Nvidia stock falls on China news again', tickers: ['NVDA'], storyId: 2 }),
+      // No shared words, but TypeSafe said same event.
+      article({ headline: 'Apple unveils foldable iPhone', tickers: ['AAPL'], storyId: 3 }),
+      article({ headline: 'Cupertino giant shows bendable handset', tickers: ['AAPL'], storyId: 3 }),
+    ])
+    assert.deepEqual(
+      clusters.map((c) => c.length),
+      [1, 1, 2]
+    )
+  })
 })

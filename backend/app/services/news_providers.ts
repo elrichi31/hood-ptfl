@@ -20,6 +20,8 @@ export type RawArticle = {
   topics?: string[]
   /** TypeSafe classification, when TYPESAFE_API_KEY is set — overrides the heuristics. */
   ai?: NewsAi | null
+  /** TypeSafe story link (see linkStories); when set it overrides headline-similarity grouping. */
+  storyId?: number | null
 }
 
 const ymd = (d: Date) => d.toISOString().slice(0, 10)

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Bell, Moon, Sun, LayoutGrid, Settings } from "lucide-react";
 import { GENERAL } from "@/components/Sidebar";
@@ -43,6 +44,47 @@ function ThemeButton() {
   );
 }
 
+const SEEN_KEY = "robinhood-dashboard:alerts-seen";
+
+/** Bell with a count of "notify now" alerts published since the viewer last opened /alerts. */
+function AlertsBell() {
+  const pathname = usePathname();
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    let seen = "";
+    try {
+      if (pathname === "/alerts") localStorage.setItem(SEEN_KEY, new Date().toISOString());
+      seen = localStorage.getItem(SEEN_KEY) ?? "";
+    } catch {
+      /* storage blocked: badge just shows the 24h count */
+    }
+    fetch("/api/alerts")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { count: number; latest: string | null } | null) =>
+        setCount(d && d.latest && d.latest > seen ? d.count : 0)
+      )
+      .catch(() => setCount(0));
+  }, [pathname]);
+
+  const label = count ? `${count} alertas nuevas` : "Sin alertas nuevas";
+  return (
+    <Link
+      href="/alerts"
+      aria-label={label}
+      title={label}
+      className="relative flex h-8 w-8 items-center justify-center rounded-md text-[var(--muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)]"
+    >
+      <Bell size={17} strokeWidth={1.75} />
+      {count > 0 && (
+        <span className="font-figures absolute top-0.5 right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--danger)] px-1 text-[10px] font-semibold text-white">
+          {count}
+        </span>
+      )}
+    </Link>
+  );
+}
+
 export function TopBar() {
   const pathname = usePathname();
   const page = GENERAL.find((n) => n.href === pathname)?.label ?? "Dashboard";
@@ -55,10 +97,7 @@ export function TopBar() {
       <span className="font-medium">{page}</span>
 
       <div className="ml-auto flex items-center gap-0.5">
-        <div className="relative">
-          <IconButton icon={<Bell size={17} strokeWidth={1.75} />} label="Sin notificaciones nuevas" />
-          <span className="pointer-events-none absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-[var(--danger)]" />
-        </div>
+        <AlertsBell />
         <ThemeButton />
         <IconButton icon={<Settings size={17} strokeWidth={1.75} />} label="Ajustes (próximamente)" />
       </div>

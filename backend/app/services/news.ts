@@ -10,7 +10,13 @@ import {
   fetchUpcomingEarnings,
   type RawArticle,
 } from '#services/news_providers'
-import { classifyArticle } from '#services/typesafe'
+import {
+  AI_VERSION,
+  classifyArticle,
+  sameStoryScores,
+  typesafeEnabled,
+  type AlertDecision,
+} from '#services/typesafe'
 
 export type NewsCategory = 'earnings' | 'company' | 'crypto' | 'macro' | 'sec'
 export type NewsEventOut = {
@@ -24,6 +30,8 @@ export type NewsEventOut = {
   relevance: number
   /** 0..1 from TypeSafe, null when the article wasn't AI-classified. */
   affectsPortfolio: number | null
+  /** Strongest TypeSafe alert decision in the cluster; null when not AI-classified. */
+  alert: AlertDecision | null
   publishedAt: string
   description: string
   aiSummary: string
@@ -102,6 +110,8 @@ const CLUSTER_SIMILARITY = 0.35
 /**
  * Groups articles about the same underlying story (shared ticker + published within
  * 30h + similar headline) so the UI can show "3 sources" instead of duplicate cards.
+ * Articles TypeSafe already linked (storyId) group by that instead — its "same event?"
+ * judgement beats word overlap in both directions.
  * ponytail: O(n²) headline-similarity scan — fine at the scale of ~a week of portfolio
  * news; revisit (e.g. bucket by ticker first) if the article count grows a lot.
  */
@@ -112,23 +122,33 @@ export function groupArticles(articles: RawArticle[]): RawArticle[][] {
     tickers: Set<string>
     tokens: Set<string>
     latest: number
+    storyIds: Set<number>
   }[] = []
 
   for (const article of sorted) {
     const tickers = new Set(article.tickers)
     const tokens = headlineTokens(article.headline)
-    const match = clusters.find(
-      (c) =>
-        article.publishedAt.getTime() - c.latest <= CLUSTER_WINDOW_MS &&
-        [...tickers].some((t) => c.tickers.has(t)) &&
-        jaccard(tokens, c.tokens) >= CLUSTER_SIMILARITY
+    const storyId = article.storyId ?? null
+    const match = clusters.find((c) =>
+      storyId !== null && c.storyIds.size
+        ? c.storyIds.has(storyId)
+        : article.publishedAt.getTime() - c.latest <= CLUSTER_WINDOW_MS &&
+          [...tickers].some((t) => c.tickers.has(t)) &&
+          jaccard(tokens, c.tokens) >= CLUSTER_SIMILARITY
     )
     if (match) {
       match.articles.push(article)
+      if (storyId !== null) match.storyIds.add(storyId)
       tickers.forEach((t) => match.tickers.add(t))
       match.latest = Math.max(match.latest, article.publishedAt.getTime())
     } else {
-      clusters.push({ articles: [article], tickers, tokens, latest: article.publishedAt.getTime() })
+      clusters.push({
+        articles: [article],
+        tickers,
+        tokens,
+        latest: article.publishedAt.getTime(),
+        storyIds: new Set(storyId !== null ? [storyId] : []),
+      })
     }
   }
   return clusters.map((c) => c.articles)
@@ -144,10 +164,22 @@ function buildEvent(cluster: RawArticle[], weightByTicker: Map<string, number>):
   const ai = rep.ai ?? cluster.find((a) => a.ai)?.ai ?? null
   const avgRelevanceRaw = cluster.reduce((s, a) => s + a.relevanceRaw, 0) / cluster.length
 
-  const topHolding = tickers.reduce<{ symbol: string; weight: number } | null>((best, t) => {
-    const weight = weightByTicker.get(t) ?? 0
-    return !best || weight > best.weight ? { symbol: t, weight } : best
-  }, null)
+  // TypeSafe's "which holding is this mainly about" beats "biggest holding mentioned".
+  const topHolding =
+    ai?.mostAffected && weightByTicker.has(ai.mostAffected)
+      ? { symbol: ai.mostAffected, weight: weightByTicker.get(ai.mostAffected)! }
+      : tickers.reduce<{ symbol: string; weight: number } | null>((best, t) => {
+          const weight = weightByTicker.get(t) ?? 0
+          return !best || weight > best.weight ? { symbol: t, weight } : best
+        }, null)
+  const alerts = cluster.map((a) => a.ai?.alert).filter((x): x is AlertDecision => Boolean(x))
+  const alert: AlertDecision | null = alerts.includes('now')
+    ? 'now'
+    : alerts.includes('digest')
+      ? 'digest'
+      : alerts.length
+        ? 'ignore'
+        : null
   const portfolioWeightPct = topHolding?.weight ?? 0
 
   // 70% provider relevance + up to 30pts for how big a portfolio position the ticker is.
@@ -182,6 +214,7 @@ function buildEvent(cluster: RawArticle[], weightByTicker: Map<string, number>):
     sentimentScore: Number(avgSentiment.toFixed(2)),
     relevance,
     affectsPortfolio: ai ? Number(ai.affectsPortfolio.toFixed(2)) : null,
+    alert,
     publishedAt: rep.publishedAt.toISOString(),
     description: rep.description,
     // "AI Summary" is the provider's own abstract, not an LLM call — no summarization
@@ -250,6 +283,7 @@ export async function ingestNews() {
   }
 
   await classifyPending(equities)
+  await linkStories()
 
   logger.info(
     `[news:poll] fetched ${articles.length} articles (${symbols.length} tickers, ${upcoming.length} upcoming earnings)`
@@ -266,7 +300,7 @@ export async function classifyPending(equities: { symbol: string; value: number 
   const totalValue = equities.reduce((s, p) => s + p.value, 0) || 1
   const portfolio = equities.map((p) => ({ symbol: p.symbol, weightPct: (p.value / totalValue) * 100 }))
   const pending = await NewsArticle.query()
-    .whereNull('ai')
+    .where((q) => q.whereNull('ai').orWhere('ai', 'not like', `%"v":${AI_VERSION},%`))
     .where('publishedAt', '>=', DateTime.now().minus({ days: FEED_LOOKBACK_DAYS }).toJSDate())
     .orderBy('publishedAt', 'desc')
     .limit(CLASSIFY_PER_CYCLE)
@@ -288,6 +322,66 @@ export async function classifyPending(equities: { symbol: string; value: number 
     )
   }
   if (pending.length) logger.info(`[news:typesafe] classified ${done}/${pending.length} articles`)
+}
+
+const LINK_PER_CYCLE = 100
+const LINK_CANDIDATES = 5
+const LINK_PREFILTER_SIMILARITY = 0.1
+const SAME_STORY_MIN = 0.7
+
+/**
+ * Assigns story_id to unlinked feed-window articles, oldest first: the few most
+ * similar earlier articles (shared ticker, within 30h) go to TypeSafe as "same event?"
+ * questions in one call; the best yes joins that story, otherwise it starts its own.
+ * No-op without TYPESAFE_API_KEY (grouping falls back to headline similarity).
+ */
+export async function linkStories() {
+  if (!typesafeEnabled()) return
+  const rows = await NewsArticle.query()
+    .where('publishedAt', '>=', DateTime.now().minus({ days: FEED_LOOKBACK_DAYS }).toJSDate())
+    .orderBy('publishedAt', 'asc')
+  const meta = rows.map((r) => ({
+    row: r,
+    tickers: new Set<string>(JSON.parse(r.tickers)),
+    tokens: headlineTokens(r.headline),
+  }))
+
+  let linked = 0
+  let processed = 0
+  for (const [i, a] of meta.entries()) {
+    if (a.row.storyId !== null) continue
+    if (processed >= LINK_PER_CYCLE) break
+    processed++
+
+    const t = a.row.publishedAt.toMillis()
+    const candidates = meta
+      .slice(0, i)
+      .filter(
+        (c) =>
+          c.row.storyId !== null &&
+          t - c.row.publishedAt.toMillis() <= CLUSTER_WINDOW_MS &&
+          [...a.tickers].some((x) => c.tickers.has(x))
+      )
+      .map((c) => ({ c, sim: jaccard(a.tokens, c.tokens) }))
+      .filter((x) => x.sim >= LINK_PREFILTER_SIMILARITY)
+      .sort((x, y) => y.sim - x.sim)
+      .slice(0, LINK_CANDIDATES)
+      .map((x) => x.c)
+
+    let storyId = a.row.id
+    if (candidates.length) {
+      const scores = await sameStoryScores(a.row, candidates.map((c) => c.row))
+      if (!scores) break // API down — retry the rest next cycle
+      const best = scores.indexOf(Math.max(...scores))
+      if (scores[best] >= SAME_STORY_MIN) {
+        storyId = candidates[best].row.storyId!
+        linked++
+      }
+    }
+    a.row.storyId = storyId
+    await a.row.save()
+  }
+  if (processed) logger.info(`[news:typesafe] story-linked ${processed} articles (${linked} joined an existing story)`)
 }
 
 const FEED_LOOKBACK_DAYS = 5
@@ -314,6 +408,7 @@ export async function getNewsFeed(): Promise<NewsFeedOut> {
     sentimentScore: r.sentimentScore,
     relevanceRaw: r.relevanceRaw,
     ai: r.ai ? JSON.parse(r.ai) : null,
+    storyId: r.storyId,
   }))
 
   const { equities } = await getPositions()

@@ -21,6 +21,8 @@ export interface NewsEvent {
   relevance: number;
   /** 0..1 TypeSafe probability this affects a holding; null/absent = not AI-classified. */
   affectsPortfolio?: number | null;
+  /** TypeSafe alert decision (already confidence-gated); null/absent = not AI-classified. */
+  alert?: "now" | "digest" | "ignore" | null;
   publishedAt: string;
   description: string;
   aiSummary: string;

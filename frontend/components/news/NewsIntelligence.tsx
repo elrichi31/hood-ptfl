@@ -51,7 +51,7 @@ function SummaryStat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function NewsCard({ event, featured }: { event: NewsEvent; featured?: boolean }) {
+export function NewsCard({ event, featured }: { event: NewsEvent; featured?: boolean }) {
   return (
     <Card className={featured ? "shadow-[inset_0_0_0_1px_var(--accent)]" : ""}>
       <div className="flex items-center gap-2">

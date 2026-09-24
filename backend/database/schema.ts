@@ -33,7 +33,7 @@ export class AuthAccessTokenSchema extends BaseModel {
 }
 
 export class NewsArticleSchema extends BaseModel {
-  static $columns = ['ai', 'createdAt', 'description', 'externalId', 'headline', 'id', 'provider', 'publishedAt', 'relevanceRaw', 'sentimentScore', 'sourceName', 'summary', 'tickers', 'url'] as const
+  static $columns = ['ai', 'createdAt', 'description', 'externalId', 'headline', 'id', 'provider', 'publishedAt', 'relevanceRaw', 'sentimentScore', 'sourceName', 'storyId', 'summary', 'tickers', 'url'] as const
   $columns = NewsArticleSchema.$columns
   @column()
   declare ai: string | null
@@ -57,6 +57,8 @@ export class NewsArticleSchema extends BaseModel {
   declare sentimentScore: number
   @column()
   declare sourceName: string
+  @column()
+  declare storyId: number | null
   @column()
   declare summary: string
   @column()
