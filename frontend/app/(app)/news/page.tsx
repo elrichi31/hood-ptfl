@@ -2,11 +2,11 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { NewsIntelligence, type Holdings } from "@/components/news/NewsIntelligence";
 import { getMockNewsFeed, type NewsFeed } from "@/lib/news";
-import { priceContext, type Hist } from "@/lib/history";
+import { prevCloseFor, type Hist } from "@/lib/history";
 import { auth } from "@/lib/auth";
 import { backend } from "@/lib/backend";
 
-type Position = { symbol: string; price: number; value: number };
+type Position = { symbol: string; price: number; value: number; prevClose?: number; prevCloseDate?: string };
 
 export default async function News() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -29,7 +29,7 @@ export default async function News() {
   const total = positions.reduce((s, p) => s + p.value, 0) || 1;
   const holdings: Holdings = Object.fromEntries(
     positions.map((p) => {
-      const { prevClose } = priceContext(hist, p.symbol);
+      const prevClose = prevCloseFor(hist, p);
       return [
         p.symbol,
         { price: p.price, weight: (p.value / total) * 100, today: prevClose ? ((p.price - prevClose) / prevClose) * 100 : null },

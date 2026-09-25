@@ -15,8 +15,6 @@ function etClock(iso: string) {
   return { weekday: get("weekday"), minutes: Number(get("hour")) * 60 + Number(get("minute")) };
 }
 
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
 /** Regular market hours: Mon–Fri 9:30–16:00 ET. ponytail: no holiday calendar. */
 export function isRegular(iso: string) {
   const { weekday, minutes } = etClock(iso);
@@ -24,40 +22,31 @@ export function isRegular(iso: string) {
 }
 
 /**
- * Trading session a snapshot belongs to (ET date): from a session's 9:30 open until the next
- * session's open — so after-hours, overnight and weekends count toward the previous session.
- * Same rule as the backend's daily_pnls, so the Today card and the Daily P&L chart agree.
+ * Index of the previous day's regular close — the last 9:30–16:00 snapshot on an earlier ET
+ * calendar date than the newest one. Robinhood's documented baseline for securities ("previous
+ * day's market closing (4 PM ET) prices"); its day rolls at midnight ET, same as its 1D chart.
+ * Falls back to the last snapshot of an earlier date, or 0.
  */
-export function sessionOf(iso: string) {
-  const { weekday, minutes } = etClock(iso);
-  let day = etDay(iso);
-  let wd = WEEKDAYS.indexOf(weekday);
-  if (wd >= 1 && wd <= 5 && minutes >= 570) return day;
-  do {
-    day = new Date(new Date(`${day}T12:00:00Z`).getTime() - 864e5).toISOString().slice(0, 10);
-    wd = (wd + 6) % 7;
-  } while (wd === 0 || wd === 6);
-  return day;
-}
-
-/** Session of the newest snapshot. */
-export const sessionDay = (at: string[]) => (at.length ? sessionOf(at[at.length - 1]) : "");
-
-/** Index of the last snapshot of the previous session (the base for today's change), or 0. */
 export function prevCloseIndex(at: string[]) {
-  const day = sessionDay(at);
-  for (let i = at.length - 1; i >= 0; i--) if (sessionOf(at[i]) < day) return i;
-  return 0;
+  if (!at.length) return 0;
+  const today = etDay(at[at.length - 1]);
+  let fallback = -1;
+  for (let i = at.length - 1; i >= 0; i--) {
+    if (etDay(at[i]) >= today) continue;
+    if (isRegular(at[i])) return i;
+    if (fallback < 0) fallback = i;
+  }
+  return Math.max(0, fallback);
 }
 
-/** Last price before the latest session and the last 7 days of prices, per symbol, from the snapshot history. */
+/** Previous regular close price and the last 7 days of prices, per symbol, from the snapshot history. */
 export function priceContext(h: Hist | undefined, symbol: string) {
   const s = h?.symbols[symbol];
   if (!h || !s || !h.at.length) return { prevClose: null, week: [] as number[] };
-  const day = sessionDay(h.at);
+  const today = etDay(h.at[h.at.length - 1]);
   let prevClose: number | null = null;
   for (let i = h.at.length - 1; i >= 0; i--) {
-    if (sessionOf(h.at[i]) < day && s.price[i] != null) {
+    if (etDay(h.at[i]) < today && isRegular(h.at[i]) && s.price[i] != null) {
       prevClose = s.price[i];
       break;
     }
@@ -84,7 +73,7 @@ export function priceAgo(h: Hist | undefined, symbol: string, msAgo: number) {
 export type FullHist = Hist & {
   total: number[];
   cash: number[];
-  symbols: Record<string, { qty: (number | null)[]; price: (number | null)[] }>;
+  symbols: Record<string, { type?: string; qty: (number | null)[]; price: (number | null)[] }>;
 };
 
 /** Gain of the step into snapshot i: Δ total − (Δ cash + Σ Δqty × price). */
@@ -117,4 +106,58 @@ export function splitPnl(h: FullHist, from: number, to = h.at.length - 1) {
     else extended += stepPnl(h, i);
   }
   return { regular, extended };
+}
+
+/** Crypto part of step i: qty held × price move (crypto trades 24/7, so it has its own baseline). */
+function cryptoStep(h: FullHist, i: number) {
+  let pnl = 0;
+  for (const s of Object.values(h.symbols)) {
+    if (s.type !== "crypto") continue;
+    const q = s.qty[i - 1];
+    const a = s.price[i - 1];
+    const b = s.price[i];
+    if (q != null && a != null && b != null) pnl += q * (b - a);
+  }
+  return pnl;
+}
+
+/**
+ * Today's return the way Robinhood documents it (support article "Using charts"):
+ * securities vs the previous session's 4 PM ET close, crypto vs 12 AM in the viewer's time
+ * zone, deposits/withdrawals excluded. `tz` is the viewer's IANA zone.
+ */
+export function robinhoodToday(h: FullHist, tz: string) {
+  const n = h.at.length;
+  const secBase = prevCloseIndex(h.at);
+  const localDay = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: tz });
+  const today = localDay(h.at[n - 1]);
+  let cryptoBase = 0;
+  for (let i = n - 1; i >= 0; i--) {
+    if (localDay(h.at[i]) < today) {
+      cryptoBase = i;
+      break;
+    }
+  }
+  let securities = 0;
+  let crypto = 0;
+  for (let i = 1; i < n; i++) {
+    const c = cryptoStep(h, i);
+    if (i > secBase) securities += stepPnl(h, i) - c;
+    if (i > cryptoBase) crypto += c;
+  }
+  const base = h.total[secBase];
+  return { pnl: securities + crypto, securities, crypto, pct: base ? ((securities + crypto) / base) * 100 : null };
+}
+
+/**
+ * Previous close for a position's "today" change: Robinhood's official close from the quote when
+ * it's from an earlier ET date than now, else the snapshot-based one (crypto, or quote not rolled).
+ */
+export function prevCloseFor(
+  h: Hist | undefined,
+  p: { symbol: string; prevClose?: number; prevCloseDate?: string }
+) {
+  const today = h?.at.length ? etDay(h.at[h.at.length - 1]) : etDay(new Date().toISOString());
+  if (p.prevClose && p.prevCloseDate && p.prevCloseDate < today) return p.prevClose;
+  return priceContext(h, p.symbol).prevClose;
 }

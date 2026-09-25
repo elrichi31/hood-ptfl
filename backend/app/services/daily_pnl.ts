@@ -7,9 +7,9 @@ import PositionSnapshot from '#models/position_snapshot'
 const etDay = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
 
 /**
- * Trading session a snapshot belongs to (ET date): from a session's 9:30 open until the next
- * session's open — after-hours, overnight and weekends count toward the previous session.
- * Mirrors sessionOf() in frontend/lib/history.ts; keep the two in sync.
+ * Trading day a snapshot's move belongs to (ET date), close to close like Robinhood's history:
+ * day D covers (previous close, D's 16:00 close]. After-hours, overnight and weekends roll into
+ * the next trading day. ponytail: no holiday calendar.
  */
 export function sessionOf(d: Date) {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -22,10 +22,10 @@ export function sessionOf(d: Date) {
   const get = (t: string) => parts.find((p) => p.type === t)!.value
   let wd = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(get('weekday'))
   let day = etDay(d)
-  if (wd >= 1 && wd <= 5 && Number(get('hour')) * 60 + Number(get('minute')) >= 570) return day
+  if (wd >= 1 && wd <= 5 && Number(get('hour')) * 60 + Number(get('minute')) <= 960) return day
   do {
-    day = new Date(new Date(`${day}T12:00:00Z`).getTime() - 864e5).toISOString().slice(0, 10)
-    wd = (wd + 6) % 7
+    day = new Date(new Date(`${day}T12:00:00Z`).getTime() + 864e5).toISOString().slice(0, 10)
+    wd = (wd + 1) % 7
   } while (wd === 0 || wd === 6)
   return day
 }

@@ -1,14 +1,14 @@
 import type { ReactNode } from "react";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { Wallet, TrendingUp, CalendarClock, CalendarDays, PiggyBank } from "lucide-react";
 import { redirect } from "next/navigation";
 import { Card } from "@/components/Card";
 import { PortfolioExplorer, type PositionHistory } from "@/components/PortfolioExplorer";
 import { PositionsTable } from "@/components/PositionsTable";
 import { DailyPnlChart, type DailyPnl } from "@/components/DailyPnlChart";
-import { AllocationChart, TopMoversChart, ConcentrationChart } from "@/components/AnalysisCharts";
+import { AllocationChart, TopMoversChart } from "@/components/AnalysisCharts";
 import { auth } from "@/lib/auth";
-import { flowAdjustedPnl, prevCloseIndex } from "@/lib/history";
+import { prevCloseIndex, robinhoodToday } from "@/lib/history";
 import { backend } from "@/lib/backend";
 
 
@@ -53,30 +53,36 @@ function Sparkline({ values, up }: { values: number[]; up: boolean }) {
   );
 }
 
-// Change vs. the first snapshot of the last 7 days.
-function weekly(history: Snapshot[], key: "totalValue" | "cash") {
-  const since = Date.now() - 7 * 864e5;
-  const week = history.filter((h) => new Date(h.at).getTime() >= since).map((h) => h[key]);
-  const series = week.length >= 2 ? week : history.map((h) => h[key]);
-  const first = series[0];
-  const last = series[series.length - 1];
-  const pct = first ? ((last - first) / Math.abs(first)) * 100 : null;
-  return { series, pct };
+/**
+ * Last 7 days' market gain from the stored daily P&L (so deposits don't count), as % of the
+ * value at the start of the window. Sparkline = raw value, which is fine for shape.
+ */
+function weekly(history: Snapshot[], daily: DailyPnl[]) {
+  const since = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
+  const days = daily.filter((d) => d.day > since);
+  const gain = days.reduce((s, d) => s + d.pnl, 0);
+  const base = days[0]?.startValue;
+  const cutoff = Date.now() - 7 * 864e5;
+  const series = history.filter((h) => new Date(h.at).getTime() >= cutoff).map((h) => h.totalValue);
+  return { series, pct: base ? (gain / base) * 100 : null };
 }
 
-/**
- * P&L of the latest session (ET): qty held at each snapshot × price move to the next, from the
- * last snapshot before today onward — so buys/sells/deposits don't count as gains, but the
- * overnight gap at the open does.
- */
-function today(h: PositionHistory) {
-  const n = h.at.length;
-  if (n < 2) return null;
+/** Today's return per Robinhood's rules (see robinhoodToday), plus the value path since the last close. */
+function today(h: PositionHistory, tz: string) {
+  if (h.at.length < 2) return null;
   const from = prevCloseIndex(h.at);
-  const pnl = flowAdjustedPnl(h, from);
-  const base = h.total[from];
-  const series = h.total.slice(from);
-  return { pnl, pct: base ? (pnl / base) * 100 : null, series };
+  return { ...robinhoodToday(h, tz), series: h.total.slice(from) };
+}
+
+/** Viewer's IANA time zone from the cookie set in the root layout; ET until the first visit sets it. */
+async function viewerTz() {
+  const tz = (await cookies()).get("tz")?.value;
+  try {
+    if (tz) new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return tz || "America/New_York";
+  } catch {
+    return "America/New_York";
+  }
 }
 
 const tone = (n: number) => (n >= 0 ? "text-[var(--success)]" : "text-[var(--danger)]");
@@ -160,7 +166,8 @@ export default async function Home() {
   const posHistory: PositionHistory = posHistoryRes.ok
     ? await posHistoryRes.json()
     : { at: [], total: [], cash: [], symbols: {} };
-  const day = today(posHistory);
+  const tz = await viewerTz();
+  const day = today(posHistory, tz);
   const daily: DailyPnl[] = dailyRes.ok ? await dailyRes.json() : [];
   const month = thisMonth(daily);
   // Unrealized: current value minus cost basis, for every position with a known avg cost.
@@ -181,7 +188,7 @@ export default async function Home() {
         </p>
 
         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard label="Total value" value={money(balance.total)} icon={<Wallet size={15} />} trend={weekly(history, "totalValue")} />
+          <StatCard label="Total value" value={money(balance.total)} icon={<Wallet size={15} />} trend={weekly(history, daily)} />
           <StatCard
             label="Total return"
             value={signed(unrealized)}
@@ -202,6 +209,7 @@ export default async function Home() {
         <div className="mt-4">
           <PortfolioExplorer
             history={posHistory}
+            tz={tz}
             aside={
               <div className="flex h-full flex-col gap-4">
                 <Card title="Allocation" className="flex-1">
@@ -213,7 +221,11 @@ export default async function Home() {
                   value={signed(day.pnl)}
                   color={day.pnl >= 0 ? "text-[var(--success)]" : "text-[var(--danger)]"}
                   icon={<CalendarClock size={15} />}
-                  trend={{ series: day.series, pct: day.pct, caption: "since last close" }}
+                  trend={{
+                series: day.series,
+                pct: day.pct,
+                caption: `stocks ${signed(day.securities)} · crypto ${signed(day.crypto)}`,
+              }}
                 />
               )}
               </div>
@@ -253,11 +265,6 @@ export default async function Home() {
           </Card>
         </div>
 
-        <div className="mt-4">
-          <Card title="Concentration">
-            <ConcentrationChart equities={positions.equities} crypto={positions.crypto} cash={totalCash} />
-          </Card>
-        </div>
 
         <div className="mt-4 flex flex-col gap-4">
           <Card title="Stocks & ETFs">

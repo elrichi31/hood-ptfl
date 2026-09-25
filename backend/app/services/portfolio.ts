@@ -32,6 +32,9 @@ export type Position = {
   avgCost: number | null
   price: number
   value: number
+  /** Official previous regular-session close and its ET date (equities only). */
+  prevClose?: number
+  prevCloseDate?: string
 }
 
 // ponytail: accounts almost never change; one shared 1h cache instead of 4 identical calls per poll.
@@ -98,9 +101,16 @@ export async function getPositions(): Promise<{ equities: Position[]; crypto: Po
         )
       : { data: { results: [] } },
   ])
+  // Latest trade of any session: last_trade_price is regular hours only, so it froze overnight while
+  // Robinhood's total_value kept moving with extended/24-hour-market prices.
+  const latestPrice = (q: any) =>
+    q.last_non_reg_trade_price && q.venue_last_non_reg_trade_time > (q.venue_last_trade_time ?? '')
+      ? Number(q.last_non_reg_trade_price)
+      : Number(q.last_trade_price)
   const priceBySymbol = new Map(
-    (equityQuotes.data.results as any[]).map((r) => [r.quote.symbol, Number(r.quote.last_trade_price)])
+    (equityQuotes.data.results as any[]).map((r) => [r.quote.symbol, latestPrice(r.quote)])
   )
+  const quoteBySymbol = new Map((equityQuotes.data.results as any[]).map((r) => [r.quote.symbol, r.quote]))
   const priceByPair = new Map(
     (cryptoQuotes.data.results as any[]).map((r) => [r.symbol, Number(r.mark_price)])
   )
@@ -115,6 +125,8 @@ export async function getPositions(): Promise<{ equities: Position[]; crypto: Po
         avgCost: p.average_buy_price ? Number(p.average_buy_price) : null,
         price,
         value: quantity * price,
+        prevClose: Number(quoteBySymbol.get(p.symbol)?.adjusted_previous_close) || undefined,
+        prevCloseDate: quoteBySymbol.get(p.symbol)?.previous_close_date,
       }
     }),
     crypto: cryptos.map((p) => {

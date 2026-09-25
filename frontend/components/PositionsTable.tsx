@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Modal } from "@heroui/react";
-import { priceAgo, priceContext, type Hist } from "@/lib/history";
+import { prevCloseFor, priceAgo, priceContext, type Hist } from "@/lib/history";
 
 type Position = {
   symbol: string;
@@ -11,6 +11,8 @@ type Position = {
   avgCost: number | null;
   price: number;
   value: number;
+  prevClose?: number;
+  prevCloseDate?: string;
 };
 
 type SymbolDetails = {
@@ -329,7 +331,8 @@ export function PositionsTable({
 
   const total = rows.reduce((s, p) => s + p.value, 0) || 1;
   const data = rows.map((p) => {
-    const { prevClose, week } = priceContext(history, p.symbol);
+    const { week } = priceContext(history, p.symbol);
+    const prevClose = prevCloseFor(history, p);
     // 1D: previous session close. Longer: Robinhood daily closes, else (crypto) the snapshot history.
     const ref =
       period === "1D"

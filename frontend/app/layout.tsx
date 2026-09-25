@@ -23,6 +23,8 @@ const themeInitScript = `
 try {
   var t = localStorage.getItem("theme") || "dark";
   document.documentElement.setAttribute("data-theme", t);
+  // Viewer's time zone for crypto's midnight baseline (read server-side, see robinhoodToday).
+  document.cookie = "tz=" + Intl.DateTimeFormat().resolvedOptions().timeZone + ";path=/;max-age=31536000;samesite=lax";
 } catch (e) {
   document.documentElement.setAttribute("data-theme", "dark");
 }

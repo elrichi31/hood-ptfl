@@ -3,7 +3,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Card } from "@/components/Card";
 import { PortfolioChart } from "@/components/PortfolioChart";
-import { flowAdjustedPnl, prevCloseIndex, splitPnl } from "@/lib/history";
+import { flowAdjustedPnl, prevCloseIndex, robinhoodToday, splitPnl } from "@/lib/history";
 
 export type PositionHistory = {
   at: string[];
@@ -65,14 +65,23 @@ function RangeTabs({ value, onChange }: { value: RangeKey; onChange: (r: RangeKe
   );
 }
 
-export function PortfolioExplorer({ history, aside }: { history: PositionHistory; aside?: ReactNode }) {
+export function PortfolioExplorer({
+  history,
+  aside,
+  tz,
+}: {
+  history: PositionHistory;
+  aside?: ReactNode;
+  tz: string;
+}) {
   const [range, setRange] = useState<RangeKey>("1D");
   const data = useMemo(() => sliceRange(history, RANGES.find((r) => r.key === range)!.ms), [history, range]);
   const tabs = <RangeTabs value={range} onChange={setRange} />;
 
   const first = data.total[0] ?? 0;
   const last = data.total[data.total.length - 1] ?? 0;
-  const change = flowAdjustedPnl(data, 0);
+  // 1D headline = Robinhood's "today" (same number as the Today card); longer ranges = range P&L.
+  const change = range === "1D" ? robinhoodToday(history, tz).pnl : flowAdjustedPnl(data, 0);
   const split = splitPnl(data, 0);
   const hi = Math.max(...data.total);
   const lo = Math.min(...data.total);
