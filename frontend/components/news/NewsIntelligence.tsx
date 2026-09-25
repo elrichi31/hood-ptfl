@@ -164,6 +164,55 @@ export function NewsCard({ event, featured, holdings }: { event: NewsEvent; feat
   );
 }
 
+/** Broadcast-style tape: newest headlines scroll right-to-left with each ticker's move today. */
+function TickerTape({ events, holdings }: { events: NewsEvent[]; holdings: Holdings }) {
+  const items = [...events].sort((a, b) => b.publishedAt.localeCompare(a.publishedAt)).slice(0, 20);
+  if (!items.length) return null;
+  const tape = (hidden?: boolean) => (
+    <div className="flex shrink-0 items-center" aria-hidden={hidden}>
+      {items.map((e) => {
+        const t = e.tickers.find((x) => holdings[x]) ?? e.tickers[0];
+        const move = t ? holdings[t]?.today : null;
+        return (
+          <a
+            key={e.id}
+            href={e.sources[0]?.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            tabIndex={hidden ? -1 : undefined}
+            className="flex items-center gap-2 px-5 text-sm whitespace-nowrap hover:text-[var(--accent)]"
+          >
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: SENTIMENT_COLOR[e.sentiment] }} />
+            {t && <span className="font-semibold">{t}</span>}
+            {move != null && (
+              <span className="font-figures font-mono text-xs" style={{ color: moveColor(move) }}>
+                {move >= 0 ? "▲" : "▼"} {signedPct(move)}
+              </span>
+            )}
+            <span className="text-[var(--secondary-foreground)]">{e.headline}</span>
+            <span className="pl-3 text-[var(--border)]">•</span>
+          </a>
+        );
+      })}
+    </div>
+  );
+  return (
+    <div className="ticker mt-5 flex overflow-hidden rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)]">
+      <span className="z-10 flex shrink-0 items-center gap-1.5 bg-[var(--danger)] px-3 py-2 text-xs font-bold tracking-wider text-white uppercase">
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+        Live
+      </span>
+      <div className="relative flex-1 overflow-hidden py-2">
+        {/* ~6s per headline keeps the speed readable whatever the count */}
+        <div className="ticker-track flex w-max" style={{ ["--ticker-duration" as string]: `${items.length * 6}s` }}>
+          {tape()}
+          {tape(true)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function NewsIntelligence({ feed, holdings = {} }: { feed: NewsFeed; holdings?: Holdings }) {
   const [filter, setFilter] = useState<NewsFilter>("all");
   const [ticker, setTicker] = useState("all");
@@ -209,7 +258,9 @@ export function NewsIntelligence({ feed, holdings = {} }: { feed: NewsFeed; hold
         </div>
       </div>
 
-      <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <TickerTape events={feed.events} holdings={holdings} />
+
+      <div className="mt-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <SummaryStat label="Relevant today" value={String(feed.events.length)} />
         <SummaryStat label="High impact" value={String(highImpactCount)} />
         <SummaryStat

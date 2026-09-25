@@ -74,3 +74,21 @@ body {
 .hatch {
   background-image: repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 7px);
 }
+
+/* News ticker tape: content is rendered twice, so sliding by -50% loops seamlessly. */
+@keyframes ticker {
+  to {
+    transform: translateX(-50%);
+  }
+}
+.ticker-track {
+  animation: ticker var(--ticker-duration, 120s) linear infinite;
+}
+.ticker:hover .ticker-track {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ticker-track {
+    animation: none;
+  }
+}
