@@ -16,6 +16,8 @@ const allowed = new Set(
 export const auth = betterAuth({
   database: new Database("storage/auth.db"),
   emailAndPassword: { enabled: true, minPasswordLength: 10 },
+  // Behind Cloudflare: rate-limit per real client IP, not one shared bucket.
+  advanced: { ipAddress: { ipAddressHeaders: ["cf-connecting-ip"] } },
   databaseHooks: {
     user: {
       create: {
