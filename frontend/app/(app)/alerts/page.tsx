@@ -1,6 +1,5 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { AppShell } from "@/components/AppShell";
 import { Card } from "@/components/Card";
 import { NewsCard } from "@/components/news/NewsIntelligence";
 import { auth } from "@/lib/auth";
@@ -21,17 +20,17 @@ export default async function Alerts() {
   const classified = events.some((e) => e.alert != null);
 
   return (
-    <AppShell name={session.user.name} email={session.user.email}>
+    <>
       <main className="mx-auto w-full max-w-[960px] flex-1 px-4 pt-6 pb-24">
-        <h1 className="text-2xl font-semibold tracking-tight">Alertas</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Alerts</h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
-          Jev (TypeSafe) decide qué noticias de tus posiciones merecen verse hoy y cuáles pueden esperar al resumen.
+          Jev (TypeSafe) decides which news about your holdings deserves attention today and which can wait for the digest.
         </p>
 
         {!classified ? (
           <Card className="mt-5">
             <p className="text-sm text-[var(--muted)]">
-              Aún no hay noticias clasificadas. Configura <code>TYPESAFE_API_KEY</code> y corre{" "}
+              No classified news yet. Set <code>TYPESAFE_API_KEY</code> and run{" "}
               <code>node ace news:classify</code>.
             </p>
           </Card>
@@ -39,7 +38,7 @@ export default async function Alerts() {
           <>
             <section className="mt-6">
               <h2 className="mb-3 text-sm font-medium text-[var(--secondary-foreground)]">
-                Ver hoy <span className="text-[var(--muted)]">· {now.length}</span>
+                See today <span className="text-[var(--muted)]">· {now.length}</span>
               </h2>
               {now.length ? (
                 <div className="flex flex-col gap-4">
@@ -48,13 +47,13 @@ export default async function Alerts() {
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-[var(--muted)]">Nada urgente. Tranquilo.</p>
+                <p className="text-sm text-[var(--muted)]">Nothing urgent. All calm.</p>
               )}
             </section>
 
             <section className="mt-8">
               <h2 className="mb-3 text-sm font-medium text-[var(--secondary-foreground)]">
-                Resumen del día <span className="text-[var(--muted)]">· {digest.length}</span>
+                Daily digest <span className="text-[var(--muted)]">· {digest.length}</span>
               </h2>
               <Card>
                 <div className="flex flex-col">
@@ -69,7 +68,7 @@ export default async function Alerts() {
                       <span className="w-14 shrink-0 font-medium">{e.tickers[0] ?? "—"}</span>
                       <span className="flex-1">{e.headline}</span>
                       <span className="shrink-0 text-xs text-[var(--muted)]">
-                        {new Date(e.publishedAt).toLocaleString("es", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                        {new Date(e.publishedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                       </span>
                     </a>
                   ))}
@@ -79,6 +78,6 @@ export default async function Alerts() {
           </>
         )}
       </main>
-    </AppShell>
+    </>
   );
 }

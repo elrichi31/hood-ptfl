@@ -17,12 +17,15 @@ export const metadata: Metadata = {
   description: "Personal Robinhood portfolio dashboard.",
 };
 
-// Runs before paint so the theme is correct on first frame (no flash).
+// Runs before paint so the theme is correct on first frame (no flash). Defaults to dark
+// instead of following the OS, which flipped the app whenever Windows auto-switched themes.
 const themeInitScript = `
 try {
-  var t = localStorage.getItem("theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  var t = localStorage.getItem("theme") || "dark";
   document.documentElement.setAttribute("data-theme", t);
-} catch (e) {}
+} catch (e) {
+  document.documentElement.setAttribute("data-theme", "dark");
+}
 `;
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

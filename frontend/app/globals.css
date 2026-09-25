@@ -33,6 +33,7 @@
 }
 
 :root[data-theme="dark"] {
+  color-scheme: dark;
   --background: #141414;
   --foreground: #e6e6e5;
   --surface: #1c1c1c;

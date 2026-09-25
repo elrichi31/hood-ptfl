@@ -32,6 +32,23 @@ export class AuthAccessTokenSchema extends BaseModel {
   declare updatedAt: DateTime | null
 }
 
+export class DailyPnlSchema extends BaseModel {
+  static $columns = ['day', 'endValue', 'pct', 'pnl', 'startValue', 'updatedAt'] as const
+  $columns = DailyPnlSchema.$columns
+  @column({ isPrimary: true })
+  declare day: string
+  @column()
+  declare endValue: number
+  @column()
+  declare pct: number | null
+  @column()
+  declare pnl: number
+  @column()
+  declare startValue: number
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime
+}
+
 export class NewsArticleSchema extends BaseModel {
   static $columns = ['ai', 'createdAt', 'description', 'externalId', 'headline', 'id', 'provider', 'publishedAt', 'relevanceRaw', 'sentimentScore', 'sourceName', 'storyId', 'summary', 'tickers', 'url'] as const
   $columns = NewsArticleSchema.$columns

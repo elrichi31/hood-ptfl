@@ -20,6 +20,8 @@ router
     router.get('latest', [controllers.Portfolio, 'latest'])
     router.get('history', [controllers.History, 'index'])
     router.get('history/positions', [controllers.History, 'positions'])
+    router.get('history/daily', [controllers.History, 'daily'])
+    router.get('history/references', [controllers.History, 'references'])
     router.get('symbol/:symbol', [controllers.Symbol, 'show'])
     router.get('politician-trades', [controllers.PoliticianTrades, 'index'])
     router.get('news', [controllers.News, 'index'])

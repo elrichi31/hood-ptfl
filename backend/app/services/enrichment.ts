@@ -1,5 +1,6 @@
 import { callTool } from '#services/robinhood'
-import { getAccounts, getPositions, json } from '#services/portfolio'
+import { getAccounts, json } from '#services/portfolio'
+import { heldPositions } from '#services/poller'
 
 /** Realized P&L over the trailing year, summed across every account. */
 export async function getRealizedPnl(span = 'year') {
@@ -117,8 +118,12 @@ export async function getSymbolDetails(symbol: string) {
 }
 
 /** Disclosed politician trades in tickers the user currently holds — fun, not preloaded on the dashboard. */
+// ponytail: in-memory 6h cache — disclosures lag weeks, so a live fetch per page view is waste.
+let tradesCache: { at: number; data: any[] } | null = null
+
 export async function getPoliticianTradesForHoldings() {
-  const { equities } = await getPositions()
+  if (tradesCache && Date.now() - tradesCache.at < 6 * 3600e3) return tradesCache.data
+  const { equities } = await heldPositions()
   const symbols = [...new Set(equities.map((p) => p.symbol))]
 
   const settled = await Promise.allSettled(
@@ -129,7 +134,57 @@ export async function getPoliticianTradesForHoldings() {
   )
   const results = settled.flatMap((r) => (r.status === 'fulfilled' ? r.value : []))
 
-  return results
+  const data = results
     .sort((a, b) => new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime())
     .slice(0, 40)
+  if (data.length) tradesCache = { at: Date.now(), data }
+  return data
+}
+
+export const PERIODS = { '1W': 7, '1M': 30, '3M': 91, '1Y': 365 } as const
+type PeriodKey = keyof typeof PERIODS | 'YTD'
+
+// ponytail: in-memory 6h cache — daily closes for past dates don't change.
+let refCache: { at: number; data: Record<string, Partial<Record<PeriodKey, number>>> } | null = null
+
+/**
+ * Close price of each held equity 1W / 1M / 3M / YTD / 1Y ago, from one year of daily bars
+ * (one Robinhood call per 10 symbols). Lets the positions table show period returns beyond
+ * the snapshot history.
+ */
+export async function getReferencePrices() {
+  if (refCache && Date.now() - refCache.at < 6 * 3600e3) return refCache.data
+  const { equities } = await heldPositions()
+  const symbols = [...new Set(equities.map((p) => p.symbol))]
+  const now = Date.now()
+  const ytdStart = new Date(new Date().getUTCFullYear(), 0, 1).getTime()
+  const data: Record<string, Partial<Record<PeriodKey, number>>> = {}
+
+  for (let i = 0; i < symbols.length; i += 10) {
+    const { data: res } = json(
+      await callTool('get_equity_historicals', {
+        symbols: symbols.slice(i, i + 10),
+        start_time: new Date(now - 380 * 864e5).toISOString(),
+        end_time: new Date(now).toISOString(),
+        interval: 'day',
+      })
+    )
+    for (const r of res.results ?? []) {
+      const bars = (r.bars ?? [])
+        .filter((b: any) => !b.interpolated)
+        .map((b: any) => ({ t: new Date(b.begins_at).getTime(), c: Number(b.close_price) }))
+      // Last close on or before `t` (so a weekend target lands on Friday's close).
+      const closeAt = (t: number) => bars.filter((b: any) => b.t <= t).at(-1)?.c
+      const refs: Partial<Record<PeriodKey, number>> = {}
+      for (const [k, d] of Object.entries(PERIODS)) {
+        const c = closeAt(now - d * 864e5)
+        if (c) refs[k as PeriodKey] = c
+      }
+      const ytd = closeAt(ytdStart - 1)
+      if (ytd) refs.YTD = ytd
+      data[r.symbol] = refs
+    }
+  }
+  if (Object.keys(data).length) refCache = { at: Date.now(), data }
+  return data
 }

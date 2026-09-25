@@ -7,6 +7,8 @@ export type ScannedRoutes = {
     'portfolio.latest': { paramsTuple?: []; params?: {} }
     'history.index': { paramsTuple?: []; params?: {} }
     'history.positions': { paramsTuple?: []; params?: {} }
+    'history.daily': { paramsTuple?: []; params?: {} }
+    'history.references': { paramsTuple?: []; params?: {} }
     'symbol.show': { paramsTuple: [ParamValue]; params: {'symbol': ParamValue} }
     'politician_trades.index': { paramsTuple?: []; params?: {} }
     'news.index': { paramsTuple?: []; params?: {} }
@@ -15,6 +17,8 @@ export type ScannedRoutes = {
     'portfolio.latest': { paramsTuple?: []; params?: {} }
     'history.index': { paramsTuple?: []; params?: {} }
     'history.positions': { paramsTuple?: []; params?: {} }
+    'history.daily': { paramsTuple?: []; params?: {} }
+    'history.references': { paramsTuple?: []; params?: {} }
     'symbol.show': { paramsTuple: [ParamValue]; params: {'symbol': ParamValue} }
     'politician_trades.index': { paramsTuple?: []; params?: {} }
     'news.index': { paramsTuple?: []; params?: {} }
@@ -23,6 +27,8 @@ export type ScannedRoutes = {
     'portfolio.latest': { paramsTuple?: []; params?: {} }
     'history.index': { paramsTuple?: []; params?: {} }
     'history.positions': { paramsTuple?: []; params?: {} }
+    'history.daily': { paramsTuple?: []; params?: {} }
+    'history.references': { paramsTuple?: []; params?: {} }
     'symbol.show': { paramsTuple: [ParamValue]; params: {'symbol': ParamValue} }
     'politician_trades.index': { paramsTuple?: []; params?: {} }
     'news.index': { paramsTuple?: []; params?: {} }

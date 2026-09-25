@@ -1,6 +1,5 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { AppShell } from "@/components/AppShell";
 import { auth } from "@/lib/auth";
 import { backend } from "@/lib/backend";
 
@@ -28,9 +27,9 @@ export default async function PoliticianTrades() {
   const trades: Trade[] = res.ok ? await res.json() : [];
 
   return (
-    <AppShell name={session.user.name} email={session.user.email}>
-      <main className="mx-auto w-full max-w-[760px] flex-1 px-6 pt-16 pb-24">
-        <h1 className="text-[2.5rem] leading-tight font-bold tracking-tight">Politician trades</h1>
+    <>
+      <main className="mx-auto w-full max-w-[760px] flex-1 px-4 pt-6 pb-24 sm:px-6 sm:pt-16">
+        <h1 className="text-2xl leading-tight sm:text-[2.5rem] font-bold tracking-tight">Politician trades</h1>
         <p className="mt-2 text-sm text-[var(--muted)]">
           Disclosed trades by US politicians in tickers you currently hold. Source: Tip Ranks, via
           Robinhood&apos;s MCP.
@@ -66,6 +65,6 @@ export default async function PoliticianTrades() {
           ))}
         </div>
       </main>
-    </AppShell>
+    </>
   );
 }

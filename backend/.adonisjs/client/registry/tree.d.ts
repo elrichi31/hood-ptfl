@@ -8,6 +8,8 @@ export interface ApiDefinition {
   history: {
     index: typeof routes['history.index']
     positions: typeof routes['history.positions']
+    daily: typeof routes['history.daily']
+    references: typeof routes['history.references']
   }
   symbol: {
     show: typeof routes['symbol.show']

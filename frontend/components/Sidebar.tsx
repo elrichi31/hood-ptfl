@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Dropdown } from "@heroui/react";
 import {
@@ -19,6 +19,7 @@ import {
   Search,
   ChevronsUpDown,
   type LucideIcon,
+  Loader2,
 } from "lucide-react";
 import { signOut } from "@/lib/auth-client";
 
@@ -89,7 +90,7 @@ export function Sidebar({
           <Search size={15} strokeWidth={1.75} className="shrink-0 text-[var(--muted)]" />
           <input
             type="text"
-            placeholder="Buscar..."
+            placeholder="Search..."
             className="w-full min-w-0 bg-transparent text-[13px] outline-none placeholder:text-[var(--muted)]"
           />
           <span className="shrink-0 text-xs text-[var(--muted)]">⌘K</span>
@@ -103,7 +104,7 @@ export function Sidebar({
           ))}
         </NavGroup>
 
-        <NavGroup title="Próximamente" collapsed={collapsed}>
+        <NavGroup title="Coming soon" collapsed={collapsed}>
           {SOON.map((item) => (
             <SoonLink key={item.label} {...item} collapsed={collapsed} />
           ))}
@@ -139,7 +140,7 @@ export function Sidebar({
               }
             }}
           >
-            <Dropdown.Item id="signout">Cerrar sesión</Dropdown.Item>
+            <Dropdown.Item id="signout">Sign out</Dropdown.Item>
           </Dropdown.Menu>
         </Dropdown.Popover>
       </Dropdown>
@@ -169,16 +170,26 @@ function NavLink({ href, label, icon: Icon, active, collapsed }: NavEntry & { ac
           : "border-transparent text-[var(--secondary-foreground)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)]"
       }`}
     >
-      <Icon size={16} strokeWidth={1.75} className="shrink-0" />
+      <NavIcon icon={Icon} />
       {!collapsed && <span className="truncate">{label}</span>}
     </Link>
+  );
+}
+
+/** Swaps to a spinner while this link's page is loading, so a slow load never looks frozen. */
+function NavIcon({ icon: Icon }: { icon: LucideIcon }) {
+  const { pending } = useLinkStatus();
+  return pending ? (
+    <Loader2 size={16} strokeWidth={1.75} className="shrink-0 animate-spin text-[var(--accent)]" />
+  ) : (
+    <Icon size={16} strokeWidth={1.75} className="shrink-0" />
   );
 }
 
 function SoonLink({ label, icon: Icon, collapsed }: SoonEntry & { collapsed?: boolean }) {
   return (
     <span
-      title={collapsed ? `${label} (próximamente)` : undefined}
+      title={collapsed ? `${label} (coming soon)` : undefined}
       className={`flex h-8 items-center rounded-lg px-2.5 text-[13px] text-[var(--secondary-foreground)] opacity-50 ${collapsed ? "justify-center" : "justify-between"}`}
     >
       <span className="flex items-center gap-2.5">

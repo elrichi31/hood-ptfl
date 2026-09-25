@@ -34,9 +34,15 @@ export type Position = {
   value: number
 }
 
-export async function getAccounts(): Promise<Account[]> {
-  const { data } = json(await callTool('get_accounts'))
-  return data.accounts
+// ponytail: accounts almost never change; one shared 1h cache instead of 4 identical calls per poll.
+let accountsCache: { at: number; data: Promise<Account[]> } | null = null
+
+export function getAccounts(): Promise<Account[]> {
+  if (accountsCache && Date.now() - accountsCache.at < 3600e3) return accountsCache.data
+  const data = callTool('get_accounts').then((r) => json(r).data.accounts as Account[])
+  accountsCache = { at: Date.now(), data }
+  data.catch(() => (accountsCache = null)) // don't cache a failure
+  return data
 }
 
 /** Total balance across every Robinhood account. */

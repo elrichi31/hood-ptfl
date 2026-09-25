@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Card } from "@/components/Card";
 import { PortfolioChart } from "@/components/PortfolioChart";
+import { flowAdjustedPnl, prevCloseIndex, splitPnl } from "@/lib/history";
 
 export type PositionHistory = {
   at: string[];
@@ -13,8 +14,10 @@ export type PositionHistory = {
 
 const RANGES = [
   { key: "1D", label: "1D", ms: 864e5 },
-  { key: "1W", label: "1S", ms: 7 * 864e5 },
+  { key: "3D", label: "3D", ms: 3 * 864e5 },
+  { key: "1W", label: "1W", ms: 7 * 864e5 },
   { key: "1M", label: "1M", ms: 31 * 864e5 },
+  { key: "ALL", label: "All", ms: Infinity },
 ] as const;
 type RangeKey = (typeof RANGES)[number]["key"];
 
@@ -27,7 +30,8 @@ const upDown = (n: number) => (n >= 0 ? "text-[var(--success)]" : "text-[var(--d
 function sliceRange(h: PositionHistory, ms: number) {
   const times = h.at.map((t) => new Date(t).getTime());
   const cutoff = times[times.length - 1] - ms;
-  const from = Math.max(0, times.findIndex((t) => t >= cutoff));
+  // 1D starts at the previous session's close (same base as the Today card), not a rolling 24h.
+  const from = ms === 864e5 ? prevCloseIndex(h.at) : Math.max(0, times.findIndex((t) => t >= cutoff));
   const sl = <T,>(a: T[]) => a.slice(from);
   return {
     at: sl(h.at),
@@ -68,7 +72,17 @@ export function PortfolioExplorer({ history, aside }: { history: PositionHistory
 
   const first = data.total[0] ?? 0;
   const last = data.total[data.total.length - 1] ?? 0;
-  const change = last - first;
+  const change = flowAdjustedPnl(data, 0);
+  const split = splitPnl(data, 0);
+  const hi = Math.max(...data.total);
+  const lo = Math.min(...data.total);
+  // Max drawdown: worst peak-to-trough drop inside the range.
+  let peak = -Infinity;
+  let drawdown = 0;
+  for (const v of data.total) {
+    peak = Math.max(peak, v);
+    drawdown = Math.min(drawdown, (v - peak) / peak);
+  }
 
   // Per-symbol P&L over the range: qty held at the previous snapshot × price move since.
   // Unlike (value_end − value_start), buys/sells in between don't count as gains.
@@ -101,7 +115,7 @@ export function PortfolioExplorer({ history, aside }: { history: PositionHistory
     return (
       <Card title="Value over time">
         <p className="text-sm text-[var(--muted)]">
-          Aún no hay suficientes datos. Corre <code>node ace portfolio:backfill</code> o espera al poller.
+          Not enough data yet. Run <code>node ace portfolio:backfill</code> or wait for the poller.
         </p>
       </Card>
     );
@@ -111,11 +125,26 @@ export function PortfolioExplorer({ history, aside }: { history: PositionHistory
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         <Card title="Value over time" action={tabs} className="lg:col-span-8">
-          <div className="mb-2 flex items-baseline gap-2">
+          <div className="mb-1 flex flex-wrap items-baseline gap-x-2">
             <span className="font-figures font-mono text-2xl font-semibold">{money(last)}</span>
             <span className={`font-figures font-mono text-sm ${upDown(change)}`}>
               {signedMoney(change)} ({signedPct(first ? (change / first) * 100 : 0)})
             </span>
+          </div>
+          <div className="font-figures mb-2 flex flex-wrap gap-x-4 gap-y-0.5 font-mono text-xs text-[var(--muted)]">
+            <span>
+              Market hours <span className={upDown(split.regular)}>{signedMoney(split.regular)}</span>
+            </span>
+            <span>
+              <span className="text-[var(--warning)]">After-hours &amp; overnight</span>{" "}
+              <span className={upDown(split.extended)}>{signedMoney(split.extended)}</span>
+            </span>
+          </div>
+          <div className="font-figures mb-3 grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-xs text-[var(--muted)] sm:grid-cols-4">
+            <span>High <span className="text-[var(--foreground)]">{money(hi)}</span></span>
+            <span>Low <span className="text-[var(--foreground)]">{money(lo)}</span></span>
+            <span>Drawdown <span className="text-[var(--danger)]">{(drawdown * 100).toFixed(2)}%</span></span>
+            <span>{data.at.length} points</span>
           </div>
           <PortfolioChart data={data.at.map((at, i) => ({ at, totalValue: data.total[i], cash: data.cash[i] }))} />
         </Card>
@@ -123,15 +152,15 @@ export function PortfolioExplorer({ history, aside }: { history: PositionHistory
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-        <Card title="Aporte al P&L por acción" action={tabs} className="lg:col-span-5">
+        <Card title="P&L contribution by stock" action={tabs} className="lg:col-span-5">
           <ContributionBars rows={contributions} />
         </Card>
-        <Card title="Distribución en el tiempo" action={tabs} className="lg:col-span-7">
-          <AllocationArea data={data} />
+        <Card title="Holdings breakdown" className="lg:col-span-7">
+          <HoldingsPie rows={perSymbol} />
         </Card>
       </div>
 
-      <Card title="Cada posición" action={tabs}>
+      <Card title="Each position" action={tabs}>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           {perSymbol.map((s) => (
             <div key={s.symbol} className="rounded-lg border border-[var(--border)] p-3">
@@ -164,118 +193,150 @@ function MiniLine({ values }: { values: number[] }) {
 
 /** Diverging bars around a zero line: gains right, losses left. */
 function ContributionBars({ rows }: { rows: { symbol: string; pnl: number }[] }) {
-  if (!rows.length) return <p className="text-sm text-[var(--muted)]">Sin movimiento en este rango.</p>;
-  const max = Math.max(...rows.map((r) => Math.abs(r.pnl)));
+  if (!rows.length) return <p className="text-sm text-[var(--muted)]">No movement in this range.</p>;
   const net = rows.reduce((s, r) => s + r.pnl, 0);
+  const up = rows.filter((r) => r.pnl > 0);
+  const down = rows.filter((r) => r.pnl < 0);
+  const upSum = up.reduce((s, r) => s + r.pnl, 0);
+  const downSum = down.reduce((s, r) => s + r.pnl, 0);
+  // Top 6 each way, the small middle folded into one line — no inner scroll, no dead space.
+  const K = 6;
+  const shown = [...up.slice(0, K), ...down.slice(-K)];
+  const hidden = rows.filter((r) => !shown.includes(r));
+  const hiddenSum = hidden.reduce((s, r) => s + r.pnl, 0);
+  const max = Math.max(...shown.map((r) => Math.abs(r.pnl)));
+
+  const Row = ({ r }: { r: { symbol: string; pnl: number } }) => (
+    <div className="flex items-center gap-2 text-sm" title={`${r.symbol}: ${signedMoney(r.pnl)}`}>
+      <span className="w-14 shrink-0 font-medium">{r.symbol}</span>
+      <div className="grid flex-1 grid-cols-2">
+        <div className="flex justify-end border-r border-[var(--border)]">
+          {r.pnl < 0 && (
+            <div className="h-3.5 rounded-l bg-[var(--danger)]" style={{ width: `${(Math.abs(r.pnl) / max) * 100}%` }} />
+          )}
+        </div>
+        <div className="flex">
+          {r.pnl > 0 && <div className="h-3.5 rounded-r bg-[var(--success)]" style={{ width: `${(r.pnl / max) * 100}%` }} />}
+        </div>
+      </div>
+      <span className={`font-figures w-20 shrink-0 text-right font-mono text-xs ${upDown(r.pnl)}`}>{signedMoney(r.pnl)}</span>
+    </div>
+  );
+
   return (
-    <div>
-      <p className="mb-3 text-xs text-[var(--muted)]">
-        Neto: <span className={`font-figures font-mono ${upDown(net)}`}>{signedMoney(net)}</span>
-      </p>
-      <div className="flex max-h-[320px] flex-col gap-1.5 overflow-y-auto pr-1">
-        {rows.map((r) => (
-          <div key={r.symbol} className="flex items-center gap-2 text-sm" title={`${r.symbol}: ${signedMoney(r.pnl)}`}>
-            <span className="w-12 shrink-0 font-medium">{r.symbol}</span>
-            <div className="grid flex-1 grid-cols-2">
-              <div className="flex justify-end border-r border-[var(--border)]">
-                {r.pnl < 0 && (
-                  <div
-                    className="h-3 rounded-l bg-[var(--danger)]"
-                    style={{ width: `${(Math.abs(r.pnl) / max) * 100}%` }}
-                  />
-                )}
-              </div>
-              <div className="flex">
-                {r.pnl > 0 && (
-                  <div className="h-3 rounded-r bg-[var(--success)]" style={{ width: `${(r.pnl / max) * 100}%` }} />
-                )}
-              </div>
-            </div>
-            <span className="font-figures w-20 shrink-0 text-right font-mono text-xs">{signedMoney(r.pnl)}</span>
-          </div>
+    <div className="flex h-full flex-col">
+      <div className="mb-3 grid grid-cols-3 gap-2 text-xs">
+        <div>
+          <p className="text-[var(--muted)]">Net</p>
+          <p className={`font-figures font-mono text-base font-semibold ${upDown(net)}`}>{signedMoney(net)}</p>
+        </div>
+        <div>
+          <p className="text-[var(--muted)]">{up.length} up</p>
+          <p className="font-figures font-mono text-base text-[var(--success)]">{signedMoney(upSum)}</p>
+        </div>
+        <div>
+          <p className="text-[var(--muted)]">{down.length} down</p>
+          <p className="font-figures font-mono text-base text-[var(--danger)]">{signedMoney(downSum)}</p>
+        </div>
+      </div>
+      <div className="flex flex-1 flex-col justify-between gap-1.5">
+        {up.slice(0, K).map((r) => (
+          <Row key={r.symbol} r={r} />
+        ))}
+        {hidden.length > 0 && (
+          <p className="py-1 text-center text-xs text-[var(--muted)]">
+            {hidden.length} more · <span className={`font-figures font-mono ${upDown(hiddenSum)}`}>{signedMoney(hiddenSum)}</span>
+          </p>
+        )}
+        {down.slice(-K).map((r) => (
+          <Row key={r.symbol} r={r} />
         ))}
       </div>
     </div>
   );
 }
 
-const W = 680;
-const H = 200;
-const PAD = 8;
-const BANDS = [
-  { key: "stocks", label: "Stocks & ETFs", color: "var(--accent)" },
-  { key: "crypto", label: "Crypto", color: "var(--crypto)" },
-  { key: "cash", label: "Cash", color: "var(--muted)" },
-] as const;
+const SLICES = 11;
+const sliceColor = (i: number) => `oklch(0.66 0.13 ${(i * 360) / SLICES + 230})`;
 
-/** 100%-stacked area of Stocks / Crypto / Cash share at each snapshot. */
-function AllocationArea({ data }: { data: ReturnType<typeof sliceRange> }) {
-  const svgRef = useRef<SVGSVGElement>(null);
-  const [hover, setHover] = useState<number | null>(null);
+/** Donut of current value per position (top 8 + Other); hover a slice or row to read it. */
+function HoldingsPie({ rows }: { rows: { symbol: string; lastValue: number }[] }) {
+  const [active, setActive] = useState<number | null>(null);
+  const total = rows.reduce((s, r) => s + r.lastValue, 0);
+  if (!total) return <p className="text-sm text-[var(--muted)]">No positions.</p>;
 
-  const shares = data.at.map((_, i) => {
-    let stocks = 0;
-    let crypto = 0;
-    for (const s of Object.values(data.symbols)) {
-      const q = s.qty[i];
-      const p = s.price[i];
-      if (q == null || p == null) continue;
-      if (s.type === "crypto") crypto += q * p;
-      else stocks += q * p;
-    }
-    const cash = data.cash[i];
-    const total = stocks + crypto + cash || 1;
-    return { stocks: stocks / total, crypto: crypto / total, cash: cash / total };
+  const top = rows.slice(0, SLICES);
+  const rest = rows.slice(SLICES).reduce((s, r) => s + r.lastValue, 0);
+  const slices = [
+    ...top.map((r, i) => ({ label: r.symbol, value: r.lastValue, color: sliceColor(i) })),
+    ...(rest > 0 ? [{ label: `Other (${rows.length - SLICES})`, value: rest, color: "var(--muted)" }] : []),
+  ];
+
+  const R = 92;
+  const r0 = 62;
+  let angle = -Math.PI / 2;
+  const arcs = slices.map((sl) => {
+    const a0 = angle;
+    const a1 = (angle += (sl.value / total) * Math.PI * 2);
+    const large = a1 - a0 > Math.PI ? 1 : 0;
+    const p = (a: number, rad: number) => `${(100 + rad * Math.cos(a)).toFixed(2)} ${(100 + rad * Math.sin(a)).toFixed(2)}`;
+    // Full circle would collapse to a zero-length arc; nudge it.
+    const end = a1 - a0 >= Math.PI * 2 ? a1 - 1e-4 : a1;
+    return `M${p(a0, R)} A${R} ${R} 0 ${large} 1 ${p(end, R)} L${p(end, r0)} A${r0} ${r0} 0 ${large} 0 ${p(a0, r0)} Z`;
   });
-  if (shares.length < 2) return <p className="text-sm text-[var(--muted)]">Sin datos en este rango.</p>;
-
-  // Index spacing (not time) so overnight gaps don't stretch into flat plateaus.
-  const x = (i: number) => (i / (shares.length - 1)) * W;
-  const y = (f: number) => PAD + (1 - f) * (H - PAD * 2);
-  const paths = BANDS.map((band, b) => {
-    const lower = shares.map((s) => BANDS.slice(0, b).reduce((acc, bb) => acc + s[bb.key], 0));
-    const upper = shares.map((s, i) => lower[i] + s[band.key]);
-    const top = upper.map((u, i) => `${i ? "L" : "M"} ${x(i)} ${y(u)}`).join(" ");
-    const bottom = lower.map((l, i) => `L ${x(i)} ${y(l)}`).reverse().join(" ");
-    return { ...band, d: `${top} ${bottom} Z` };
-  });
-
-  const h = hover !== null ? shares[hover] : shares[shares.length - 1];
-  const hAt = data.at[hover ?? shares.length - 1];
+  const shown = active !== null ? slices[active] : null;
+  const maxSlice = Math.max(...slices.map((sl) => sl.value));
 
   return (
-    <div>
-      <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-        {BANDS.map((b) => (
-          <span key={b.key} className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-sm" style={{ background: b.color }} />
-            <span className="text-[var(--muted)]">{b.label}</span>
-            <span className="font-figures font-mono">{(h[b.key] * 100).toFixed(1)}%</span>
-          </span>
+    <div className="flex h-full flex-col items-center gap-6 sm:flex-row sm:items-center">
+      <svg viewBox="0 0 200 200" className="h-[220px] w-[220px] shrink-0 sm:h-[240px] sm:w-[240px]" onPointerLeave={() => setActive(null)}>
+        {arcs.map((d, i) => (
+          <path
+            key={slices[i].label}
+            d={d}
+            fill={slices[i].color}
+            stroke="var(--surface)"
+            strokeWidth={1.5}
+            opacity={active === null || active === i ? 1 : 0.35}
+            onPointerEnter={() => setActive(i)}
+          />
         ))}
-        <span className="ml-auto text-[var(--muted)]">
-          {new Date(hAt).toLocaleString("es", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-        </span>
-      </div>
-      <svg
-        ref={svgRef}
-        viewBox={`0 0 ${W} ${H}`}
-        preserveAspectRatio="none"
-        className="h-[200px] w-full"
-        onPointerMove={(e) => {
-          const rect = svgRef.current!.getBoundingClientRect();
-          const i = Math.round(((e.clientX - rect.left) / rect.width) * (shares.length - 1));
-          setHover(Math.max(0, Math.min(shares.length - 1, i)));
-        }}
-        onPointerLeave={() => setHover(null)}
-      >
-        {paths.map((p) => (
-          <path key={p.key} d={p.d} fill={p.color} opacity={0.85} stroke="var(--surface)" strokeWidth={2} vectorEffect="non-scaling-stroke" />
-        ))}
-        {hover !== null && (
-          <line x1={x(hover)} x2={x(hover)} y1={0} y2={H} stroke="var(--foreground)" strokeWidth={1} vectorEffect="non-scaling-stroke" />
-        )}
+        <text x={100} y={88} textAnchor="middle" fontSize={11} className="fill-[var(--muted)]">
+          {shown ? shown.label : `${rows.length} holdings`}
+        </text>
+        <text x={100} y={108} textAnchor="middle" fontSize={17} fontWeight={600} className="font-figures fill-[var(--foreground)]">
+          {shown ? `${((shown.value / total) * 100).toFixed(1)}%` : money(total)}
+        </text>
+        <text x={100} y={124} textAnchor="middle" fontSize={11} className="font-figures fill-[var(--muted)]">
+          {shown ? money(shown.value) : `top ${top.length}: ${(((total - rest) / total) * 100).toFixed(0)}%`}
+        </text>
       </svg>
+      <div className="flex w-full flex-col gap-1 text-sm">
+        {slices.map((sl, i) => {
+          const share = (sl.value / total) * 100;
+          return (
+            <div
+              key={sl.label}
+              onPointerEnter={() => setActive(i)}
+              onPointerLeave={() => setActive(null)}
+              className={`rounded px-1.5 py-1 ${active === i ? "bg-[var(--surface-hover)]" : ""}`}
+            >
+              <div className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: sl.color }} />
+                <span className="truncate font-medium">{sl.label}</span>
+                <span className="font-figures ml-auto font-mono text-xs text-[var(--muted)]">{share.toFixed(1)}%</span>
+                <span className="font-figures w-20 text-right font-mono text-xs">{money(sl.value)}</span>
+              </div>
+              <div className="mt-1 ml-[18px] h-1 overflow-hidden rounded-full bg-[var(--surface-secondary)]">
+                <div
+                  className="h-full rounded-full"
+                  style={{ width: `${(sl.value / maxSlice) * 100}%`, background: sl.color }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

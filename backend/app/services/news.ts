@@ -1,7 +1,7 @@
 import { DateTime } from 'luxon'
 import logger from '@adonisjs/core/services/logger'
 import NewsArticle from '#models/news_article'
-import { getPositions } from '#services/portfolio'
+import { heldPositions } from '#services/poller'
 import {
   fetchFinnhubNews,
   fetchFinnhubGeneralNews,
@@ -252,7 +252,7 @@ let cachedUpcomingEvents: { label: string; date: string }[] = []
 
 /** Fetches from every configured provider and upserts into news_articles, deduped per provider+externalId. */
 export async function ingestNews() {
-  const { equities } = await getPositions()
+  const { equities } = await heldPositions()
   const symbols = [...new Set(equities.map((p) => p.symbol))].slice(0, 20)
 
   const [finnhub, finnhubGeneral, alphavantage, marketaux, upcoming] = await Promise.all([
@@ -411,7 +411,7 @@ export async function getNewsFeed(): Promise<NewsFeedOut> {
     storyId: r.storyId,
   }))
 
-  const { equities } = await getPositions()
+  const { equities } = await heldPositions()
   const totalValue = equities.reduce((s, p) => s + p.value, 0) || 1
   const weightByTicker = new Map(equities.map((p) => [p.symbol, (p.value / totalValue) * 100]))
 
@@ -462,6 +462,12 @@ export function startNewsPolling() {
           `[news:poll] last ingest was ${Math.round(elapsedMs / 60000)}min ago, waiting before the next one`
         )
         setTimeout(tick, POLL_INTERVAL_MS - elapsedMs)
+        // The earnings calendar lives in memory, so reload it now (Finnhub only, cheap) instead of
+        // leaving Upcoming events empty until the next full ingest.
+        heldPositions()
+          .then(({ equities }) => fetchUpcomingEarnings([...new Set(equities.map((p) => p.symbol))].slice(0, 20)))
+          .then((upcoming) => (cachedUpcomingEvents = upcoming))
+          .catch((err) => logger.error({ err }, '[news:poll] could not load upcoming earnings'))
       }
     })
     .catch((err) => {

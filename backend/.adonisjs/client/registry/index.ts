@@ -24,6 +24,18 @@ const routes = {
     tokens: [{"old":"/api/v1/history/positions","type":0,"val":"api","end":""},{"old":"/api/v1/history/positions","type":0,"val":"v1","end":""},{"old":"/api/v1/history/positions","type":0,"val":"history","end":""},{"old":"/api/v1/history/positions","type":0,"val":"positions","end":""}],
     types: placeholder as Registry['history.positions']['types'],
   },
+  'history.daily': {
+    methods: ["GET","HEAD"],
+    pattern: '/api/v1/history/daily',
+    tokens: [{"old":"/api/v1/history/daily","type":0,"val":"api","end":""},{"old":"/api/v1/history/daily","type":0,"val":"v1","end":""},{"old":"/api/v1/history/daily","type":0,"val":"history","end":""},{"old":"/api/v1/history/daily","type":0,"val":"daily","end":""}],
+    types: placeholder as Registry['history.daily']['types'],
+  },
+  'history.references': {
+    methods: ["GET","HEAD"],
+    pattern: '/api/v1/history/references',
+    tokens: [{"old":"/api/v1/history/references","type":0,"val":"api","end":""},{"old":"/api/v1/history/references","type":0,"val":"v1","end":""},{"old":"/api/v1/history/references","type":0,"val":"history","end":""},{"old":"/api/v1/history/references","type":0,"val":"references","end":""}],
+    types: placeholder as Registry['history.references']['types'],
+  },
   'symbol.show': {
     methods: ["GET","HEAD"],
     pattern: '/api/v1/symbol/:symbol',

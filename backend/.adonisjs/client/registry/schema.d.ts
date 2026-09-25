@@ -43,6 +43,30 @@ export interface Registry {
       errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/history_controller').default['positions']>>>
     }
   }
+  'history.daily': {
+    methods: ["GET","HEAD"]
+    pattern: '/api/v1/history/daily'
+    types: {
+      body: {}
+      paramsTuple: []
+      params: {}
+      query: {}
+      response: ExtractResponse<Awaited<ReturnType<import('#controllers/history_controller').default['daily']>>>
+      errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/history_controller').default['daily']>>>
+    }
+  }
+  'history.references': {
+    methods: ["GET","HEAD"]
+    pattern: '/api/v1/history/references'
+    types: {
+      body: {}
+      paramsTuple: []
+      params: {}
+      query: {}
+      response: ExtractResponse<Awaited<ReturnType<import('#controllers/history_controller').default['references']>>>
+      errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/history_controller').default['references']>>>
+    }
+  }
   'symbol.show': {
     methods: ["GET","HEAD"]
     pattern: '/api/v1/symbol/:symbol'
