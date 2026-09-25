@@ -262,7 +262,10 @@ export async function ingestNews() {
     fetchMarketauxNews(symbols),
     fetchUpcomingEarnings(symbols),
   ])
-  const articles = [...finnhub, ...finnhubGeneral, ...alphavantage, ...marketaux]
+  // Provider URLs end up in <a href>: only keep http(s), never javascript:/data: from a bad feed.
+  const articles = [...finnhub, ...finnhubGeneral, ...alphavantage, ...marketaux].filter((a) =>
+    /^https?:\/\//i.test(a.url ?? '')
+  )
   cachedUpcomingEvents = upcoming
 
   for (const a of articles) {
