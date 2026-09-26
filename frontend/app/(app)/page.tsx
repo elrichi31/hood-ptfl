@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { cookies, headers } from "next/headers";
+import { headers } from "next/headers";
+import { viewerTz } from "@/lib/tz";
 import { Wallet, TrendingUp, CalendarClock, CalendarDays, PiggyBank } from "lucide-react";
 import { redirect } from "next/navigation";
 import { Card } from "@/components/Card";
@@ -72,17 +73,6 @@ function today(h: PositionHistory, tz: string) {
   if (h.at.length < 2) return null;
   const from = prevCloseIndex(h.at);
   return { ...robinhoodToday(h, tz), series: h.total.slice(from) };
-}
-
-/** Viewer's IANA time zone from the cookie set in the root layout; ET until the first visit sets it. */
-async function viewerTz() {
-  const tz = (await cookies()).get("tz")?.value;
-  try {
-    if (tz) new Intl.DateTimeFormat("en-US", { timeZone: tz });
-    return tz || "America/New_York";
-  } catch {
-    return "America/New_York";
-  }
 }
 
 const tone = (n: number) => (n >= 0 ? "text-[var(--success)]" : "text-[var(--danger)]");
@@ -268,10 +258,10 @@ export default async function Home() {
 
         <div className="mt-4 flex flex-col gap-4">
           <Card title="Stocks & ETFs">
-            <PositionsTable rows={positions.equities} history={posHistory} references={references} enrichable />
+            <PositionsTable rows={positions.equities} history={posHistory} references={references} tz={tz} enrichable />
           </Card>
           <Card title="Crypto">
-            <PositionsTable rows={positions.crypto} history={posHistory} references={references} />
+            <PositionsTable rows={positions.crypto} history={posHistory} references={references} tz={tz} />
           </Card>
         </div>
       </main>

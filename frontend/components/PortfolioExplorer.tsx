@@ -3,7 +3,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Card } from "@/components/Card";
 import { PortfolioChart } from "@/components/PortfolioChart";
-import { flowAdjustedPnl, prevCloseIndex, robinhoodToday, splitPnl } from "@/lib/history";
+import { flowAdjustedPnl, prevCloseIndex, robinhoodToday, splitPnl, stepPnl } from "@/lib/history";
 
 export type PositionHistory = {
   at: string[];
@@ -85,12 +85,15 @@ export function PortfolioExplorer({
   const split = splitPnl(data, 0);
   const hi = Math.max(...data.total);
   const lo = Math.min(...data.total);
-  // Max drawdown: worst peak-to-trough drop inside the range.
-  let peak = -Infinity;
+  // Max drawdown: worst peak-to-trough drop of the time-weighted index (compounded step returns),
+  // so a withdrawal isn't a "drop" and a deposit isn't a new peak.
+  let index = 1;
+  let peak = 1;
   let drawdown = 0;
-  for (const v of data.total) {
-    peak = Math.max(peak, v);
-    drawdown = Math.min(drawdown, (v - peak) / peak);
+  for (let i = 1; i < data.total.length; i++) {
+    if (data.total[i - 1]) index *= 1 + stepPnl(data, i) / data.total[i - 1];
+    peak = Math.max(peak, index);
+    drawdown = Math.min(drawdown, index / peak - 1);
   }
 
   // Per-symbol P&L over the range: qty held at the previous snapshot × price move since.

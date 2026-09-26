@@ -1,24 +1,39 @@
-export type Hist = { at: string[]; symbols: Record<string, { price: (number | null)[] }> };
+export type Hist = { at: string[]; symbols: Record<string, { type?: string; price: (number | null)[] }> };
 
 export const etDay = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
 
-/** Minutes since midnight ET and weekday, for market-hours checks. */
-function etClock(iso: string) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    weekday: "short",
-    hour: "numeric",
-    minute: "numeric",
-    hourCycle: "h23",
-  }).formatToParts(new Date(iso));
-  const get = (t: string) => parts.find((p) => p.type === t)!.value;
-  return { weekday: get("weekday"), minutes: Number(get("hour")) * 60 + Number(get("minute")) };
+/**
+ * NYSE calendar (nyse.com/markets/hours-calendars), mirrors backend/app/services/market_hours.ts.
+ * ponytail: hardcoded through 2028 — append the next year's row when NYSE publishes it.
+ */
+const HOLIDAYS = new Set([
+  "2026-01-01", "2026-01-19", "2026-02-16", "2026-04-03", "2026-05-25", "2026-06-19", "2026-07-03",
+  "2026-09-07", "2026-11-26", "2026-12-25",
+  "2027-01-01", "2027-01-18", "2027-02-15", "2027-03-26", "2027-05-31", "2027-06-18", "2027-07-05",
+  "2027-09-06", "2027-11-25", "2027-12-24",
+  "2028-01-17", "2028-02-21", "2028-04-14", "2028-05-29", "2028-06-19", "2028-07-04", "2028-09-04",
+  "2028-11-23", "2028-12-25",
+]);
+const EARLY_CLOSES = new Set(["2026-11-27", "2026-12-24", "2027-11-26", "2028-07-03", "2028-11-24"]);
+
+/** That ET day's session, in minutes since ET midnight; null when the market is closed all day. */
+export function sessionHours(iso: string) {
+  const day = etDay(iso);
+  const weekday = new Date(`${day}T12:00:00Z`).getUTCDay();
+  if (weekday === 0 || weekday === 6 || HOLIDAYS.has(day)) return null;
+  return { open: 570, close: EARLY_CLOSES.has(day) ? 780 : 960 };
 }
 
-/** Regular market hours: Mon–Fri 9:30–16:00 ET. ponytail: no holiday calendar. */
+/** Regular market hours: 9:30 to 16:00 ET (13:00 on early closes), holidays excluded. */
 export function isRegular(iso: string) {
-  const { weekday, minutes } = etClock(iso);
-  return weekday !== "Sat" && weekday !== "Sun" && minutes >= 570 && minutes <= 960;
+  const s = sessionHours(iso);
+  if (!s) return false;
+  const [h, m] = new Date(iso)
+    .toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "numeric", hourCycle: "h23" })
+    .split(":")
+    .map(Number);
+  const minutes = h * 60 + m;
+  return minutes >= s.open && minutes <= s.close;
 }
 
 /**
@@ -77,7 +92,7 @@ export type FullHist = Hist & {
 };
 
 /** Gain of the step into snapshot i: Δ total − (Δ cash + Σ Δqty × price). */
-function stepPnl(h: FullHist, i: number) {
+export function stepPnl(h: FullHist, i: number) {
   let flow = h.cash[i] - h.cash[i - 1];
   for (const s of Object.values(h.symbols)) {
     const dq = (s.qty[i] ?? 0) - (s.qty[i - 1] ?? 0);
@@ -121,6 +136,14 @@ function cryptoStep(h: FullHist, i: number) {
   return pnl;
 }
 
+/** Index of the last snapshot before 12 AM today in `tz` (Robinhood's crypto baseline), or 0. */
+function midnightIndex(at: string[], tz: string) {
+  const localDay = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: tz });
+  const today = localDay(at[at.length - 1]);
+  for (let i = at.length - 1; i >= 0; i--) if (localDay(at[i]) < today) return i;
+  return 0;
+}
+
 /**
  * Today's return the way Robinhood documents it (support article "Using charts"):
  * securities vs the previous session's 4 PM ET close, crypto vs 12 AM in the viewer's time
@@ -129,15 +152,7 @@ function cryptoStep(h: FullHist, i: number) {
 export function robinhoodToday(h: FullHist, tz: string) {
   const n = h.at.length;
   const secBase = prevCloseIndex(h.at);
-  const localDay = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: tz });
-  const today = localDay(h.at[n - 1]);
-  let cryptoBase = 0;
-  for (let i = n - 1; i >= 0; i--) {
-    if (localDay(h.at[i]) < today) {
-      cryptoBase = i;
-      break;
-    }
-  }
+  const cryptoBase = midnightIndex(h.at, tz);
   let securities = 0;
   let crypto = 0;
   for (let i = 1; i < n; i++) {
@@ -150,13 +165,16 @@ export function robinhoodToday(h: FullHist, tz: string) {
 }
 
 /**
- * Previous close for a position's "today" change: Robinhood's official close from the quote when
- * it's from an earlier ET date than now, else the snapshot-based one (crypto, or quote not rolled).
+ * Baseline for a position's "today" change. Crypto: price at 12 AM in the viewer's `tz`, same as
+ * the Today card. Securities: Robinhood's official close from the quote when it's from an earlier
+ * ET date than now, else the snapshot-based one (quote not rolled yet).
  */
 export function prevCloseFor(
   h: Hist | undefined,
-  p: { symbol: string; prevClose?: number; prevCloseDate?: string }
+  p: { symbol: string; prevClose?: number; prevCloseDate?: string },
+  tz: string
 ) {
+  if (h?.at.length && h.symbols[p.symbol]?.type === "crypto") return h.symbols[p.symbol].price[midnightIndex(h.at, tz)] ?? null;
   const today = h?.at.length ? etDay(h.at[h.at.length - 1]) : etDay(new Date().toISOString());
   if (p.prevClose && p.prevCloseDate && p.prevCloseDate < today) return p.prevClose;
   return priceContext(h, p.symbol).prevClose;

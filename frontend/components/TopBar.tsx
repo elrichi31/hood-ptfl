@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Bell, Moon, Sun, LayoutGrid, Settings, ReceiptText, Menu as MenuIcon } from "lucide-react";
 import { GENERAL } from "@/components/Sidebar";
+import { sessionHours } from "@/lib/history";
 
 function IconButton({ icon, label, onClick }: { icon: ReactNode; label: string; onClick?: () => void }) {
   return (
@@ -239,7 +240,7 @@ function OrdersMenu() {
 
 const hm = (d: Date, timeZone?: string) => d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone });
 
-/** Local + New York time, NYSE hours (9:30–16:00 ET) shown in both zones. Mirrors the poller's schedule, no holidays. */
+/** Local + New York time, and today's NYSE hours in local time. Same calendar as the poller. */
 function MarketClock() {
   const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
@@ -252,17 +253,18 @@ function MarketClock() {
 
   const ny = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" })); // NY wall clock as a local Date
   const shift = now.getTime() - ny.getTime();
-  const at = (h: number, m: number) => new Date(new Date(ny).setHours(h, m, 0, 0) + shift);
+  const at = (min: number) => new Date(new Date(ny).setHours(0, min, 0, 0) + shift);
   const min = ny.getHours() * 60 + ny.getMinutes();
-  const open = ny.getDay() % 6 !== 0 && min >= 570 && min < 960;
+  const hours = sessionHours(now.toISOString());
+  const open = !!hours && min >= hours.open && min < hours.close;
 
   return (
     <div className="font-figures hidden items-center gap-3 text-xs text-[var(--muted)] lg:flex">
       <span>Local <span className="text-[var(--foreground)]">{hm(now)}</span></span>
       <span>NY <span className="text-[var(--foreground)]">{hm(now, "America/New_York")}</span></span>
-      <span title="NYSE regular hours, 9:30–16:00 ET">
+      <span title="NYSE regular hours today">
         <span className={open ? "text-[var(--success)]" : "text-[var(--danger)]"}>● {open ? "Open" : "Closed"}</span>{" "}
-        {hm(at(9, 30))}–{hm(at(16, 0))} local
+        {hours ? `${hm(at(hours.open))}–${hm(at(hours.close))} local` : "no session today"}
       </span>
     </div>
   );

@@ -4,29 +4,18 @@ import PositionSnapshot from '#models/position_snapshot'
 import { getBalance, getPositions, type Position } from '#services/portfolio'
 import { getOrders, getRealizedPnl, getReferencePrices } from '#services/enrichment'
 import { backfillDailyPnl, computeDailyPnl } from '#services/daily_pnl'
+import { OPEN_MIN, closeMin, etClock, isTradingDay } from '#services/market_hours'
 
 const MARKET_INTERVAL_MS = 5 * 60 * 1000
 const OFF_HOURS_INTERVAL_MS = 30 * 60 * 1000
 
-const OPEN_MIN = 9 * 60 + 30
-const CLOSE_MIN = 16 * 60
-
-/** NYSE regular hours, Mon–Fri 9:30–16:00 ET. No holiday calendar — ponytail: add one if it matters. */
-function marketClock(now = new Date()) {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York',
-    weekday: 'short',
-    hour: 'numeric',
-    minute: 'numeric',
-    second: 'numeric',
-    hourCycle: 'h23',
-  }).formatToParts(now)
-  const get = (type: string) => parts.find((p) => p.type === type)!.value
-  const weekend = get('weekday') === 'Sat' || get('weekday') === 'Sun'
-  const min = Number(get('hour')) * 60 + Number(get('minute')) + Number(get('second')) / 60
-  const open = !weekend && min >= OPEN_MIN && min < CLOSE_MIN
-  // Next 9:30 or 16:00 ET, so the poll lands right on the open/close instead of up to 30 min late.
-  const nextBoundary = min < OPEN_MIN ? OPEN_MIN : min < CLOSE_MIN ? CLOSE_MIN : OPEN_MIN + 24 * 60
+/** NYSE regular hours (9:30 to 16:00 ET, or 13:00 on early closes), holidays excluded. */
+export function marketClock(now = new Date()) {
+  const { day, weekday, min } = etClock(now)
+  const close = closeMin(day)
+  const open = isTradingDay(day, weekday) && min >= OPEN_MIN && min < close
+  // Next 9:30 or close, so the poll lands right on the open/close instead of up to 30 min late.
+  const nextBoundary = min < OPEN_MIN ? OPEN_MIN : min < close ? close : OPEN_MIN + 24 * 60
   return { open, msToBoundary: (nextBoundary - min) * 60_000 }
 }
 

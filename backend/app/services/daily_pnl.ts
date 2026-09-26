@@ -3,30 +3,20 @@ import logger from '@adonisjs/core/services/logger'
 import { DateTime } from 'luxon'
 import PortfolioSnapshot from '#models/portfolio_snapshot'
 import PositionSnapshot from '#models/position_snapshot'
-
-const etDay = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+import { closeMin, etClock, isTradingDay } from '#services/market_hours'
 
 /**
  * Trading day a snapshot's move belongs to (ET date), close to close like Robinhood's history:
- * day D covers (previous close, D's 16:00 close]. After-hours, overnight and weekends roll into
- * the next trading day. ponytail: no holiday calendar.
+ * day D covers (previous close, D's close]. After-hours, overnight, weekends and NYSE holidays
+ * roll into the next trading day. The close poll lands at 16:00:05, so whole minutes are compared.
  */
 export function sessionOf(d: Date) {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York',
-    weekday: 'short',
-    hour: 'numeric',
-    minute: 'numeric',
-    hourCycle: 'h23',
-  }).formatToParts(d)
-  const get = (t: string) => parts.find((p) => p.type === t)!.value
-  let wd = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(get('weekday'))
-  let day = etDay(d)
-  if (wd >= 1 && wd <= 5 && Number(get('hour')) * 60 + Number(get('minute')) <= 960) return day
+  let { day, weekday: wd, min } = etClock(d)
+  if (isTradingDay(day, wd) && Math.floor(min) <= closeMin(day)) return day
   do {
     day = new Date(new Date(`${day}T12:00:00Z`).getTime() + 864e5).toISOString().slice(0, 10)
     wd = (wd + 1) % 7
-  } while (wd === 0 || wd === 6)
+  } while (!isTradingDay(day, wd))
   return day
 }
 

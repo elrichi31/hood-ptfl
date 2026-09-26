@@ -317,10 +317,13 @@ export function PositionsTable({
   enrichable,
   history,
   references,
+  tz,
 }: {
   rows: Position[];
   enrichable?: boolean;
   history?: Hist;
+  /** Viewer's IANA zone: crypto's "today" starts at their midnight. */
+  tz: string;
   /** Equity closes 1W/1M/3M/YTD/1Y ago, from the backend (daily bars). */
   references?: References;
 }) {
@@ -332,7 +335,7 @@ export function PositionsTable({
   const total = rows.reduce((s, p) => s + p.value, 0) || 1;
   const data = rows.map((p) => {
     const { week } = priceContext(history, p.symbol);
-    const prevClose = prevCloseFor(history, p);
+    const prevClose = prevCloseFor(history, p, tz);
     // 1D: previous session close. Longer: Robinhood daily closes, else (crypto) the snapshot history.
     const ref =
       period === "1D"

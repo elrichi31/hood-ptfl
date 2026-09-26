@@ -4,6 +4,7 @@ import { NewsIntelligence, type Holdings } from "@/components/news/NewsIntellige
 import { getMockNewsFeed, type NewsFeed } from "@/lib/news";
 import { prevCloseFor, type Hist } from "@/lib/history";
 import { auth } from "@/lib/auth";
+import { viewerTz } from "@/lib/tz";
 import { backend } from "@/lib/backend";
 
 type Position = { symbol: string; price: number; value: number; prevClose?: number; prevCloseDate?: string };
@@ -27,9 +28,10 @@ export default async function News() {
     : [];
   const hist: Hist | undefined = histRes.ok ? await histRes.json() : undefined;
   const total = positions.reduce((s, p) => s + p.value, 0) || 1;
+  const tz = await viewerTz();
   const holdings: Holdings = Object.fromEntries(
     positions.map((p) => {
-      const prevClose = prevCloseFor(hist, p);
+      const prevClose = prevCloseFor(hist, p, tz);
       return [
         p.symbol,
         { price: p.price, weight: (p.value / total) * 100, today: prevClose ? ((p.price - prevClose) / prevClose) * 100 : null },
