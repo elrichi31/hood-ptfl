@@ -8,21 +8,26 @@ import { backfillDailyPnl, computeDailyPnl } from '#services/daily_pnl'
 const MARKET_INTERVAL_MS = 5 * 60 * 1000
 const OFF_HOURS_INTERVAL_MS = 30 * 60 * 1000
 
+const OPEN_MIN = 9 * 60 + 30
+const CLOSE_MIN = 16 * 60
+
 /** NYSE regular hours, Mon–Fri 9:30–16:00 ET. No holiday calendar — ponytail: add one if it matters. */
-function isMarketOpen(now = new Date()) {
+function marketClock(now = new Date()) {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York',
     weekday: 'short',
     hour: 'numeric',
     minute: 'numeric',
+    second: 'numeric',
     hourCycle: 'h23',
   }).formatToParts(now)
   const get = (type: string) => parts.find((p) => p.type === type)!.value
-  const weekday = get('weekday')
-  const minutesSinceMidnight = Number(get('hour')) * 60 + Number(get('minute'))
-
-  if (weekday === 'Sat' || weekday === 'Sun') return false
-  return minutesSinceMidnight >= 9 * 60 + 30 && minutesSinceMidnight < 16 * 60
+  const weekend = get('weekday') === 'Sat' || get('weekday') === 'Sun'
+  const min = Number(get('hour')) * 60 + Number(get('minute')) + Number(get('second')) / 60
+  const open = !weekend && min >= OPEN_MIN && min < CLOSE_MIN
+  // Next 9:30 or 16:00 ET, so the poll lands right on the open/close instead of up to 30 min late.
+  const nextBoundary = min < OPEN_MIN ? OPEN_MIN : min < CLOSE_MIN ? CLOSE_MIN : OPEN_MIN + 24 * 60
+  return { open, msToBoundary: (nextBoundary - min) * 60_000 }
 }
 
 type Latest = {
@@ -99,9 +104,10 @@ export function startPolling() {
     await inflight
     // Warm the 6h period-price cache so the dashboard never waits on it.
     getReferencePrices().catch((err) => logger.error({ err }, '[refs] warm-up failed'))
-    const open = isMarketOpen()
-    const delay = open ? MARKET_INTERVAL_MS : OFF_HOURS_INTERVAL_MS
-    logger.info(`[robinhood:poll] next in ${delay / 60000}min (market ${open ? 'open' : 'closed'})`)
+    const { open, msToBoundary } = marketClock()
+    // +5s so the boundary tick sees the new state (open at 9:30:05, closing snapshot at 16:00:05).
+    const delay = Math.min(open ? MARKET_INTERVAL_MS : OFF_HOURS_INTERVAL_MS, msToBoundary + 5000)
+    logger.info(`[robinhood:poll] next in ${(delay / 60000).toFixed(1)}min (market ${open ? 'open' : 'closed'})`)
     setTimeout(tick, delay)
   }
   tick()

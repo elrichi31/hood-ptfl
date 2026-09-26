@@ -237,6 +237,37 @@ function OrdersMenu() {
   );
 }
 
+const hm = (d: Date, timeZone?: string) => d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone });
+
+/** Local + New York time, NYSE hours (9:30–16:00 ET) shown in both zones. Mirrors the poller's schedule, no holidays. */
+function MarketClock() {
+  const [now, setNow] = useState<Date | null>(null);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNow(new Date());
+    const id = setInterval(() => setNow(new Date()), 15_000);
+    return () => clearInterval(id);
+  }, []);
+  if (!now) return null;
+
+  const ny = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" })); // NY wall clock as a local Date
+  const shift = now.getTime() - ny.getTime();
+  const at = (h: number, m: number) => new Date(new Date(ny).setHours(h, m, 0, 0) + shift);
+  const min = ny.getHours() * 60 + ny.getMinutes();
+  const open = ny.getDay() % 6 !== 0 && min >= 570 && min < 960;
+
+  return (
+    <div className="font-figures hidden items-center gap-3 text-xs text-[var(--muted)] lg:flex">
+      <span>Local <span className="text-[var(--foreground)]">{hm(now)}</span></span>
+      <span>NY <span className="text-[var(--foreground)]">{hm(now, "America/New_York")}</span></span>
+      <span title="NYSE regular hours, 9:30–16:00 ET">
+        <span className={open ? "text-[var(--success)]" : "text-[var(--danger)]"}>● {open ? "Open" : "Closed"}</span>{" "}
+        {hm(at(9, 30))}–{hm(at(16, 0))} local
+      </span>
+    </div>
+  );
+}
+
 export function TopBar({ onMenu }: { onMenu?: () => void }) {
   const pathname = usePathname();
   const page = GENERAL.find((n) => n.href === pathname)?.label ?? "Dashboard";
@@ -257,6 +288,8 @@ export function TopBar({ onMenu }: { onMenu?: () => void }) {
       <span className="font-medium">{page}</span>
 
       <div className="ml-auto flex items-center gap-0.5">
+        <MarketClock />
+        <span className="mx-2 hidden h-4 w-px bg-[var(--border)] lg:block" />
         <OrdersMenu />
         <AlertsBell />
         <ThemeButton />
