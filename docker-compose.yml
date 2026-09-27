@@ -10,7 +10,7 @@ services:
       HOST: 0.0.0.0
       PORT: 3333
       LOG_LEVEL: info
-      APP_URL: http://backend:3333
+      APP_URL: http://robinhood-backend:3333
       SESSION_DRIVER: cookie
       APP_KEY: ${APP_KEY}
       BACKEND_TOKEN: ${BACKEND_TOKEN}
@@ -23,6 +23,11 @@ services:
     volumes:
       - backend-storage:/src/build/storage # Robinhood OAuth tokens
       - backend-data:/src/build/tmp # SQLite (snapshots, news)
+    networks:
+      default:
+        # Unique name: Dokploy puts every project on the shared dokploy-network,
+        # where plain "backend" can resolve to another project's container.
+        aliases: [robinhood-backend]
 
   frontend:
     build: ./frontend
@@ -31,7 +36,7 @@ services:
       - backend
     environment:
       NODE_ENV: production
-      BACKEND_URL: http://backend:3333
+      BACKEND_URL: http://robinhood-backend:3333
       BACKEND_TOKEN: ${BACKEND_TOKEN}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL}
