@@ -25,6 +25,8 @@ router
     router.get('symbol/:symbol', [controllers.Symbol, 'show'])
     router.get('politician-trades', [controllers.PoliticianTrades, 'index'])
     router.get('news', [controllers.News, 'index'])
+    router.get('usage', [controllers.Usage, 'index'])
+    router.get('risk', [controllers.Risk, 'index'])
   })
   .prefix('/api/v1')
   .use(middleware.internalToken())

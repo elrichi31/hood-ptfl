@@ -160,6 +160,28 @@ export async function getReferencePrices() {
   const ytdStart = new Date(new Date().getUTCFullYear(), 0, 1).getTime()
   const data: Record<string, Partial<Record<PeriodKey, number>>> = {}
 
+  for (const [symbol, bars] of await getDailyBars(symbols)) {
+    // Last close on or before `t` (so a weekend target lands on Friday's close).
+    const closeAt = (t: number) => bars.filter((b) => b.t <= t).at(-1)?.c
+    const refs: Partial<Record<PeriodKey, number>> = {}
+    for (const [k, d] of Object.entries(PERIODS)) {
+      const c = closeAt(now - d * 864e5)
+      if (c) refs[k as PeriodKey] = c
+    }
+    const ytd = closeAt(ytdStart - 1)
+    if (ytd) refs.YTD = ytd
+    data[symbol] = refs
+  }
+  if (Object.keys(data).length) refCache = { at: Date.now(), data }
+  return data
+}
+
+export type Bar = { t: number; day: string; c: number }
+
+/** ~1 year of daily closes per equity symbol, oldest first (one Robinhood call per 10 symbols). */
+export async function getDailyBars(symbols: string[]): Promise<Map<string, Bar[]>> {
+  const now = Date.now()
+  const out = new Map<string, Bar[]>()
   for (let i = 0; i < symbols.length; i += 10) {
     const { data: res } = json(
       await callTool('get_equity_historicals', {
@@ -170,21 +192,31 @@ export async function getReferencePrices() {
       })
     )
     for (const r of res.results ?? []) {
-      const bars = (r.bars ?? [])
-        .filter((b: any) => !b.interpolated)
-        .map((b: any) => ({ t: new Date(b.begins_at).getTime(), c: Number(b.close_price) }))
-      // Last close on or before `t` (so a weekend target lands on Friday's close).
-      const closeAt = (t: number) => bars.filter((b: any) => b.t <= t).at(-1)?.c
-      const refs: Partial<Record<PeriodKey, number>> = {}
-      for (const [k, d] of Object.entries(PERIODS)) {
-        const c = closeAt(now - d * 864e5)
-        if (c) refs[k as PeriodKey] = c
-      }
-      const ytd = closeAt(ytdStart - 1)
-      if (ytd) refs.YTD = ytd
-      data[r.symbol] = refs
+      out.set(
+        r.symbol,
+        (r.bars ?? [])
+          .filter((b: any) => !b.interpolated)
+          .map((b: any) => ({
+            t: new Date(b.begins_at).getTime(),
+            day: String(b.begins_at).slice(0, 10),
+            c: Number(b.close_price),
+          }))
+      )
     }
   }
-  if (Object.keys(data).length) refCache = { at: Date.now(), data }
-  return data
+  return out
+}
+
+/** Sector per equity symbol from Robinhood fundamentals (null for most ETFs). */
+export async function getSectors(symbols: string[]): Promise<Map<string, string | null>> {
+  const out = new Map<string, string | null>()
+  for (let i = 0; i < symbols.length; i += 10) {
+    const { data } = json(await callTool('get_equity_fundamentals', { symbols: symbols.slice(i, i + 10) }))
+    for (const f of data.results ?? []) {
+      // ETFs all come back as sector "Miscellaneous" — the industry is what tells them apart.
+      const fund = /investment trusts|mutual funds/i.test(f?.industry ?? '')
+      if (f?.symbol) out.set(f.symbol, fund ? 'Funds & ETFs' : (f.sector ?? null))
+    }
+  }
+  return out
 }

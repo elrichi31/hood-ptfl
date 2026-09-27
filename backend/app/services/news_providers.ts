@@ -1,6 +1,7 @@
 import logger from '@adonisjs/core/services/logger'
 import env from '#start/env'
 import type { NewsAi } from '#services/typesafe'
+import { trackedFetch, type Provider } from '#services/api_usage'
 
 export type RawArticle = {
   provider: 'finnhub' | 'alphavantage' | 'marketaux'
@@ -27,9 +28,9 @@ export type RawArticle = {
 const ymd = (d: Date) => d.toISOString().slice(0, 10)
 
 /** A provider outage shouldn't take down the whole poll — log and return nothing. */
-async function safeFetchJson(url: string, provider: string): Promise<any | null> {
+async function safeFetchJson(url: string, provider: Provider): Promise<any | null> {
   try {
-    const res = await fetch(url)
+    const res = await trackedFetch(provider, url)
     if (!res.ok) {
       logger.warn(`[news:${provider}] HTTP ${res.status}`)
       return null

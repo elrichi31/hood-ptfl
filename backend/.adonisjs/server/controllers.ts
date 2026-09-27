@@ -8,5 +8,7 @@ export const controllers = {
   News: () => import('#controllers/news_controller'),
   PoliticianTrades: () => import('#controllers/politician_trades_controller'),
   Portfolio: () => import('#controllers/portfolio_controller'),
+  Risk: () => import('#controllers/risk_controller'),
   Symbol: () => import('#controllers/symbol_controller'),
+  Usage: () => import('#controllers/usage_controller'),
 }

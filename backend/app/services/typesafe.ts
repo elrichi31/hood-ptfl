@@ -1,5 +1,6 @@
 import logger from '@adonisjs/core/services/logger'
 import env from '#start/env'
+import { trackedFetch } from '#services/api_usage'
 import type { NewsCategory } from '#services/news'
 
 /** Bump when the questions change so old classifications get redone. */
@@ -79,7 +80,7 @@ async function ask(state: unknown, questions: Record<string, unknown>): Promise<
   // Retries 429/529 with backoff (1s, 2s), as the API docs ask.
   for (let attempt = 0; ; attempt++) {
     try {
-      const res = await fetch('https://api.typesafe.ai/v1/systemone', {
+      const res = await trackedFetch('typesafe', 'https://api.typesafe.ai/v1/systemone', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: 'jev-latest', state, questions }),

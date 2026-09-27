@@ -7,6 +7,21 @@
 import { BaseModel, column } from '@adonisjs/lucid/orm'
 import { DateTime } from 'luxon'
 
+export class ApiUsageSchema extends BaseModel {
+  static $columns = ['calls', 'day', 'errors', 'provider', 'updatedAt'] as const
+  $columns = ApiUsageSchema.$columns
+  @column()
+  declare calls: number
+  @column()
+  declare day: string
+  @column()
+  declare errors: number
+  @column({ isPrimary: true })
+  declare provider: string
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime
+}
+
 export class AuthAccessTokenSchema extends BaseModel {
   static $columns = ['abilities', 'createdAt', 'expiresAt', 'hash', 'id', 'lastUsedAt', 'name', 'tokenableId', 'type', 'updatedAt'] as const
   $columns = AuthAccessTokenSchema.$columns

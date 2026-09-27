@@ -31,14 +31,14 @@ export const GENERAL: NavEntry[] = [
   { href: "/news", label: "News", icon: Newspaper },
   { href: "/politician-trades", label: "Politician trades", icon: Landmark },
   { href: "/alerts", label: "Alerts", icon: BellRing },
+  { href: "/risk", label: "Risk", icon: ShieldAlert },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 const SOON: SoonEntry[] = [
   { label: "Portfolio", icon: Wallet },
   { label: "AI Analyst", icon: Sparkles },
   { label: "Discover", icon: Compass },
-  { label: "Risk", icon: ShieldAlert },
-  { label: "Settings", icon: Settings },
 ];
 
 export function Sidebar({
