@@ -188,8 +188,11 @@ function buildEvent(cluster: RawArticle[], weightByTicker: Map<string, number>):
   const relevance = Math.round(
     Math.max(0, Math.min(100, ai ? heuristicRelevance / 2 + ai.affectsPortfolio * 50 : heuristicRelevance))
   )
+  // ai.impact is TypeSafe's expected score on 0..3 and it hedges toward the middle: in practice
+  // p50 ≈ 1.0, p90 ≈ 1.4, almost never 2. Cutting at 2/1 labeled nearly everything "medium",
+  // so these cuts are tuned to the real spread (~15% high / ~50% medium / ~35% low).
   const impact: NewsEventOut['impact'] = ai
-    ? ai.impact >= 2 ? 'high' : ai.impact >= 1 ? 'medium' : 'low'
+    ? alert === 'now' || ai.impact >= 1.3 ? 'high' : ai.impact >= 0.95 ? 'medium' : 'low'
     : relevance >= 75 || Math.abs(avgSentiment) >= 0.6 ? 'high' : relevance >= 45 ? 'medium' : 'low'
   const sentiment: NewsEventOut['sentiment'] =
     avgSentiment > 0.15 ? 'positive' : avgSentiment < -0.15 ? 'negative' : 'neutral'
