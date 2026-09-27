@@ -51,8 +51,9 @@ export function TickerLogo({ symbol, crypto = false, size = 32 }: { symbol: stri
   return (
     <span
       aria-hidden
-      className={`flex shrink-0 items-center justify-center overflow-hidden rounded-md bg-[var(--surface-secondary)] ${crypto ? "p-[12%]" : ""}`}
-      style={box}
+      className="flex shrink-0 items-center justify-center overflow-hidden rounded-md bg-[var(--surface-secondary)]"
+      // Pixels, not %: percentage padding resolves against the parent's width (a wide table cell), which crushed the coin to a dot.
+      style={{ ...box, padding: crypto ? Math.round(size * 0.12) : 0 }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element -- tiny same-origin logos, cached a week; next/image adds nothing here */}
       <img
