@@ -10,5 +10,6 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api/auth|login|signup|_next/static|_next/image|favicon.ico).*)"],
+  // api/logo: public company/coin logos (see app/api/logo), cached by the browser for a week.
+  matcher: ["/((?!api/auth|api/logo|login|signup|_next/static|_next/image|favicon.ico).*)"],
 };

@@ -3,22 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 
 /**
- * Company / coin logo by ticker, all free and keyless:
- * - stocks & ETFs: Parqet's logo CDN (uniform app-icon squares), then FMP's image-stock as backup;
- * - crypto: the cryptocurrency-icons npm package on jsDelivr (version-pinned, immutable), then nvstly and
- *   CoinCap — Parqet resolves "BTC"/"USDC" to unrelated stocks, so crypto never goes there;
- * - anything that fails falls through to a colored monogram, so a row never shows an empty tile.
+ * Company / coin logo by ticker, served by this app's own /api/logo proxy (which picks the source:
+ * Parqet/FMP for stocks and ETFs, crypto icon sets for coins). Anything that fails — or hangs — falls
+ * back to a colored monogram, so a row never shows an empty tile.
  */
-const sources = (symbol: string, crypto: boolean) => {
-  const s = encodeURIComponent(symbol);
-  return crypto
-    ? [
-        `https://cdn.jsdelivr.net/npm/cryptocurrency-icons@0.18.1/128/color/${s.toLowerCase()}.png`,
-        `https://cdn.jsdelivr.net/gh/nvstly/icons@main/crypto_icons/${s}.png`,
-        `https://assets.coincap.io/assets/icons/${s.toLowerCase()}@2x.png`,
-      ]
-    : [`https://assets.parqet.com/logos/symbol/${s}?format=png`, `https://financialmodelingprep.com/image-stock/${s}.png`];
-};
+const HANG_MS = 6000;
 
 function tickerHue(symbol: string) {
   let hash = 0;
@@ -27,19 +16,27 @@ function tickerHue(symbol: string) {
 }
 
 export function TickerLogo({ symbol, crypto = false, size = 32 }: { symbol: string; crypto?: boolean; size?: number }) {
-  const [attempt, setAttempt] = useState(0);
+  const [failed, setFailed] = useState(false);
   const img = useRef<HTMLImageElement>(null);
-  const urls = sources(symbol, crypto);
   const box = { width: size, height: size };
 
-  // The server-rendered <img> can fail before React hydrates, and then onError never fires — the
-  // tile would stay empty. Catch that case on mount (and after each source switch).
   useEffect(() => {
     const el = img.current;
-    if (el?.complete && el.naturalWidth === 0) setAttempt((a) => a + 1);
-  }, [attempt]);
+    if (!el) return;
+    // The server-rendered <img> can fail before React hydrates, and then onError never fires.
+    if (el.complete) {
+      if (el.naturalWidth === 0) setFailed(true);
+      return;
+    }
+    // A request that neither loads nor errors (blocked network) would otherwise leave the tile blank.
+    const t = setTimeout(() => {
+      if (!el.complete || el.naturalWidth === 0) setFailed(true);
+    }, HANG_MS);
+    el.addEventListener("load", () => clearTimeout(t), { once: true });
+    return () => clearTimeout(t);
+  }, []);
 
-  if (attempt >= urls.length) {
+  if (failed) {
     return (
       <span
         aria-hidden
@@ -57,16 +54,14 @@ export function TickerLogo({ symbol, crypto = false, size = 32 }: { symbol: stri
       className={`flex shrink-0 items-center justify-center overflow-hidden rounded-md bg-[var(--surface-secondary)] ${crypto ? "p-[12%]" : ""}`}
       style={box}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element -- third-party logo CDNs, tiny images; next/image would need remotePatterns for each */}
+      {/* eslint-disable-next-line @next/next/no-img-element -- tiny same-origin logos, cached a week; next/image adds nothing here */}
       <img
         ref={img}
-        key={urls[attempt]}
-        src={urls[attempt]}
+        src={`/api/logo/${encodeURIComponent(symbol)}${crypto ? "?crypto=1" : ""}`}
         alt=""
-        loading="lazy"
         decoding="async"
         className="h-full w-full object-contain"
-        onError={() => setAttempt((a) => a + 1)}
+        onError={() => setFailed(true)}
       />
     </span>
   );
