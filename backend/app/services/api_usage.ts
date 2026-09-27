@@ -2,14 +2,16 @@ import db from '@adonisjs/lucid/services/db'
 import logger from '@adonisjs/core/services/logger'
 import env from '#start/env'
 
-export type Provider = 'finnhub' | 'alphavantage' | 'marketaux' | 'typesafe'
+export type Provider = 'finnhub' | 'alphavantage' | 'marketaux' | 'typesafe' | 'coinbase'
 
 // Free-tier limits as published by each provider. null = no daily cap / not published.
-const PROVIDERS: Record<Provider, { envKey: string; perDay: number | null; perMinute: number | null }> = {
+const PROVIDERS: Record<Provider, { envKey: string | null; perDay: number | null; perMinute: number | null }> = {
   finnhub: { envKey: 'FINNHUB_API_KEY', perDay: null, perMinute: 60 },
   alphavantage: { envKey: 'ALPHAVANTAGE_API_KEY', perDay: 25, perMinute: 5 },
   marketaux: { envKey: 'MARKETAUX_API_KEY', perDay: 100, perMinute: null },
   typesafe: { envKey: 'TYPESAFE_API_KEY', perDay: null, perMinute: null },
+  // Public market data, no key: ~10 req/s per IP.
+  coinbase: { envKey: null, perDay: null, perMinute: 600 },
 }
 
 // Rate-limit headers from the latest response (Finnhub sends X-Ratelimit-*). In memory: they're per-minute anyway.
@@ -43,6 +45,23 @@ export async function trackedFetch(provider: Provider, url: string, init?: Reque
   }
 }
 
+export async function callsToday(provider: Provider) {
+  const row = await db.from('api_usages').where({ provider, day: utcDay() }).first()
+  return Number(row?.calls ?? 0)
+}
+
+/**
+ * Paces a daily quota evenly across the UTC day: by now you may have used perDay × (fraction of the
+ * day elapsed), +1 so the day can start, and never the last call (slack for another process on the
+ * same key, e.g. local dev). Counts come from the DB, so restarts can't burn the quota.
+ */
+export function budgetAllows(provider: Provider, used: number, now = new Date()) {
+  const { perDay } = PROVIDERS[provider]
+  if (!perDay) return true
+  const elapsed = (now.getTime() - Date.parse(`${utcDay(now)}T00:00:00Z`)) / 864e5
+  return used < Math.min(perDay - 1, Math.floor(perDay * elapsed) + 1)
+}
+
 /** Per provider: today's calls vs quota plus the last 7 UTC days. */
 export async function getApiUsage() {
   const since = utcDay(new Date(Date.now() - 6 * 24 * 3600 * 1000))
@@ -56,7 +75,7 @@ export async function getApiUsage() {
     const total = mine.reduce((s, r) => s + Number(r.calls), 0)
     return {
       provider,
-      configured: Boolean(env.get(envKey as any)),
+      configured: envKey === null || Boolean(env.get(envKey as any)),
       perDay,
       perMinute,
       today: Number(todayRow?.calls ?? 0),

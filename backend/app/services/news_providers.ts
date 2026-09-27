@@ -1,7 +1,7 @@
 import logger from '@adonisjs/core/services/logger'
 import env from '#start/env'
 import type { NewsAi } from '#services/typesafe'
-import { trackedFetch, type Provider } from '#services/api_usage'
+import { budgetAllows, callsToday, trackedFetch, type Provider } from '#services/api_usage'
 
 export type RawArticle = {
   provider: 'finnhub' | 'alphavantage' | 'marketaux'
@@ -135,10 +135,10 @@ function parseAlphaVantageDate(raw: string): Date {
   return new Date(iso)
 }
 
-/** NEWS_SENTIMENT covers every held ticker in one call — the free tier only allows 25 calls/day. */
+/** NEWS_SENTIMENT covers every held ticker in one call — 25 calls/day, paced by budgetAllows (~1/hour). */
 export async function fetchAlphaVantageNews(symbols: string[]): Promise<RawArticle[]> {
   const key = env.get('ALPHAVANTAGE_API_KEY')
-  if (!key || !symbols.length) return []
+  if (!key || !symbols.length || !budgetAllows('alphavantage', await callsToday('alphavantage'))) return []
 
   const url = `https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers=${symbols.map(encodeURIComponent).join(',')}&apikey=${key}`
   const data = await safeFetchJson(url, 'alphavantage')
@@ -172,10 +172,17 @@ export async function fetchAlphaVantageNews(symbols: string[]): Promise<RawArtic
   })
 }
 
-/** Marketaux also takes every held ticker in one call — 100 req/day on the free tier. */
-export async function fetchMarketauxNews(symbols: string[]): Promise<RawArticle[]> {
+/**
+ * Marketaux's free tier returns only 3 articles per request (100 req/day), so one call for the whole
+ * portfolio got 3 articles total. Instead each call covers one holding, rotating by today's call count
+ * (persisted, so a restart continues the rotation), paced by budgetAllows (~1 every 15 min).
+ */
+export async function fetchMarketauxNews(held: string[]): Promise<RawArticle[]> {
   const key = env.get('MARKETAUX_API_KEY')
-  if (!key || !symbols.length) return []
+  if (!key || !held.length) return []
+  const used = await callsToday('marketaux')
+  if (!budgetAllows('marketaux', used)) return []
+  const symbols = [held[used % held.length]]
 
   const url = `https://api.marketaux.com/v1/news/all?symbols=${symbols.map(encodeURIComponent).join(',')}&filter_entities=true&language=en&api_token=${key}`
   const data = await safeFetchJson(url, 'marketaux')
@@ -183,7 +190,7 @@ export async function fetchMarketauxNews(symbols: string[]): Promise<RawArticle[
   if (!Array.isArray(items)) return []
 
   return items.map((item: any): RawArticle => {
-    const entities = (item.entities ?? []).filter((e: any) => symbols.includes(e.symbol))
+    const entities = (item.entities ?? []).filter((e: any) => held.includes(e.symbol))
     const avgSentiment = entities.length
       ? entities.reduce((s: number, e: any) => s + Number(e.sentiment_score ?? 0), 0) /
         entities.length

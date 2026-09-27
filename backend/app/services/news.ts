@@ -441,9 +441,10 @@ export async function getNewsFeed(): Promise<NewsFeedOut> {
   }
 }
 
-// 2h keeps Alpha Vantage's 25-req/day free tier comfortable (12/day) even with a
-// few dev-server restarts in a day — Finnhub and Marketaux have far more headroom.
-const POLL_INTERVAL_MS = 2 * 60 * 60 * 1000
+// Every 15 min: Finnhub (no daily cap) runs each tick; Alpha Vantage and Marketaux only fire when
+// budgetAllows (#services/api_usage) says their daily quota has room, which spreads them evenly
+// over the day (~1/hour and ~1/15min) — so this cadence no longer risks their quotas.
+const POLL_INTERVAL_MS = 15 * 60 * 1000
 
 /**
  * Fetches on an interval, but skips the immediate call on boot if the last ingest was

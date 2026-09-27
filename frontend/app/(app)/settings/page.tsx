@@ -5,7 +5,7 @@ import { backend } from "@/lib/backend";
 import { Card } from "@/components/Card";
 
 type Usage = {
-  provider: "finnhub" | "alphavantage" | "marketaux" | "typesafe";
+  provider: "finnhub" | "alphavantage" | "marketaux" | "typesafe" | "coinbase";
   configured: boolean;
   perDay: number | null;
   perMinute: number | null;
@@ -18,11 +18,16 @@ type Usage = {
 };
 
 const INFO: Record<Usage["provider"], { name: string; usedFor: string }> = {
-  finnhub: { name: "Finnhub", usedFor: "Company news per holding, market headlines, earnings calendar" },
-  alphavantage: { name: "Alpha Vantage", usedFor: "News + sentiment for all holdings (one call per poll)" },
-  marketaux: { name: "Marketaux", usedFor: "Entity-matched news for all holdings (one call per poll)" },
+  finnhub: { name: "Finnhub", usedFor: "News every 15 min, live prices (WebSocket), Discover, insider trades, earnings calendar" },
+  alphavantage: { name: "Alpha Vantage", usedFor: "News + sentiment for all holdings, paced to use the full daily quota (~1/hour)" },
+  marketaux: { name: "Marketaux", usedFor: "News for one holding per call, rotating, paced to use the full daily quota (~1 every 15 min)" },
   typesafe: { name: "TypeSafe", usedFor: "AI classification of new articles (one call per article)" },
+  coinbase: { name: "Coinbase", usedFor: "Multi-year daily crypto prices for Risk (public, no key; ~20 calls per 6h rebuild)" },
 };
+
+/** The last 7 UTC days, oldest first — the backend buckets calls by UTC day (when quotas reset). */
+const lastWeek = () =>
+  Array.from({ length: 7 }, (_, i) => new Date(Date.now() - (6 - i) * 864e5).toISOString().slice(0, 10));
 
 export default async function Settings() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -94,18 +99,20 @@ function ProviderCard({ u }: { u: Usage }) {
         {!u.perDay && !u.perMinute && " · limits not published"}
       </p>
 
-      {u.days.length > 0 && (
-        <div className="mt-3 flex h-10 items-end gap-1" aria-label="Calls per day, last 7 days">
-          {u.days.map((d) => (
+      {/* Always 7 slots (oldest → today), so one day of data doesn't stretch into a full-width block. */}
+      <div className="mt-3 flex h-10 items-end gap-1" aria-label="Calls per day, last 7 days">
+        {lastWeek().map((day) => {
+          const d = u.days.find((x) => x.day === day);
+          return (
             <div
-              key={d.day}
-              title={`${d.day}: ${d.calls} calls${d.errors ? `, ${d.errors} failed` : ""}`}
-              className="flex-1 rounded-sm bg-[var(--accent)] opacity-70"
-              style={{ height: `${Math.max(6, (d.calls / max) * 100)}%` }}
+              key={day}
+              title={`${day}: ${d?.calls ?? 0} calls${d?.errors ? `, ${d.errors} failed` : ""}`}
+              className={`flex-1 rounded-sm ${d?.calls ? "bg-[var(--accent)] opacity-70" : "bg-[var(--surface-secondary)]"}`}
+              style={{ height: d?.calls ? `${Math.max(8, (d.calls / max) * 100)}%` : "2px" }}
             />
-          ))}
-        </div>
-      )}
+          );
+        })}
+      </div>
     </Card>
   );
 }

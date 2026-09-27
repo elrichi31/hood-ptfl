@@ -6,6 +6,7 @@
 export const controllers = {
   Discover: () => import('#controllers/discover_controller'),
   History: () => import('#controllers/history_controller'),
+  Insiders: () => import('#controllers/insiders_controller'),
   Live: () => import('#controllers/live_controller'),
   News: () => import('#controllers/news_controller'),
   PoliticianTrades: () => import('#controllers/politician_trades_controller'),
