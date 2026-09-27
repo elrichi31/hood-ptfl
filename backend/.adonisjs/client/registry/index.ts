@@ -54,6 +54,24 @@ const routes = {
     tokens: [{"old":"/api/v1/news","type":0,"val":"api","end":""},{"old":"/api/v1/news","type":0,"val":"v1","end":""},{"old":"/api/v1/news","type":0,"val":"news","end":""}],
     types: placeholder as Registry['news.index']['types'],
   },
+  'usage.index': {
+    methods: ["GET","HEAD"],
+    pattern: '/api/v1/usage',
+    tokens: [{"old":"/api/v1/usage","type":0,"val":"api","end":""},{"old":"/api/v1/usage","type":0,"val":"v1","end":""},{"old":"/api/v1/usage","type":0,"val":"usage","end":""}],
+    types: placeholder as Registry['usage.index']['types'],
+  },
+  'risk.index': {
+    methods: ["GET","HEAD"],
+    pattern: '/api/v1/risk',
+    tokens: [{"old":"/api/v1/risk","type":0,"val":"api","end":""},{"old":"/api/v1/risk","type":0,"val":"v1","end":""},{"old":"/api/v1/risk","type":0,"val":"risk","end":""}],
+    types: placeholder as Registry['risk.index']['types'],
+  },
+  'live.stream': {
+    methods: ["GET","HEAD"],
+    pattern: '/api/v1/live',
+    tokens: [{"old":"/api/v1/live","type":0,"val":"api","end":""},{"old":"/api/v1/live","type":0,"val":"v1","end":""},{"old":"/api/v1/live","type":0,"val":"live","end":""}],
+    types: placeholder as Registry['live.stream']['types'],
+  },
 } as const satisfies Record<string, AdonisEndpoint>
 
 export { routes }

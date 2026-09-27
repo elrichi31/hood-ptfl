@@ -20,4 +20,13 @@ export interface ApiDefinition {
   news: {
     index: typeof routes['news.index']
   }
+  usage: {
+    index: typeof routes['usage.index']
+  }
+  risk: {
+    index: typeof routes['risk.index']
+  }
+  live: {
+    stream: typeof routes['live.stream']
+  }
 }

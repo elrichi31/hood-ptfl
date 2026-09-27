@@ -5,6 +5,7 @@
 
 export const controllers = {
   History: () => import('#controllers/history_controller'),
+  Live: () => import('#controllers/live_controller'),
   News: () => import('#controllers/news_controller'),
   PoliticianTrades: () => import('#controllers/politician_trades_controller'),
   Portfolio: () => import('#controllers/portfolio_controller'),

@@ -103,4 +103,40 @@ export interface Registry {
       errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/news_controller').default['index']>>>
     }
   }
+  'usage.index': {
+    methods: ["GET","HEAD"]
+    pattern: '/api/v1/usage'
+    types: {
+      body: {}
+      paramsTuple: []
+      params: {}
+      query: {}
+      response: ExtractResponse<Awaited<ReturnType<import('#controllers/usage_controller').default['index']>>>
+      errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/usage_controller').default['index']>>>
+    }
+  }
+  'risk.index': {
+    methods: ["GET","HEAD"]
+    pattern: '/api/v1/risk'
+    types: {
+      body: {}
+      paramsTuple: []
+      params: {}
+      query: {}
+      response: ExtractResponse<Awaited<ReturnType<import('#controllers/risk_controller').default['index']>>>
+      errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/risk_controller').default['index']>>>
+    }
+  }
+  'live.stream': {
+    methods: ["GET","HEAD"]
+    pattern: '/api/v1/live'
+    types: {
+      body: {}
+      paramsTuple: []
+      params: {}
+      query: {}
+      response: ExtractResponse<Awaited<ReturnType<import('#controllers/live_controller').default['stream']>>>
+      errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/live_controller').default['stream']>>>
+    }
+  }
 }

@@ -11,6 +11,7 @@ import { AllocationChart, TopMoversChart } from "@/components/AnalysisCharts";
 import { auth } from "@/lib/auth";
 import { prevCloseIndex, robinhoodToday } from "@/lib/history";
 import { backend } from "@/lib/backend";
+import { LivePricesProvider, LiveTotal } from "@/components/LivePrices";
 
 
 type Balance = {
@@ -102,7 +103,7 @@ function StatCard({
   trend,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   color?: string;
   icon?: ReactNode;
   trend?: { series: number[]; pct: number | null; caption?: string };
@@ -168,7 +169,7 @@ export default async function Home() {
   const totalCash = balance.accounts.reduce((s, a) => s + a.cash, 0);
 
   return (
-    <>
+    <LivePricesProvider>
       <main className="mx-auto w-full max-w-[1280px] flex-1 px-4 pt-6 pb-24">
         <h1 className="text-2xl font-semibold tracking-tight">
           Hi, {session.user.name.split(" ")[0] || "there"} 👋
@@ -178,7 +179,12 @@ export default async function Home() {
         </p>
 
         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard label="Total value" value={money(balance.total)} icon={<Wallet size={15} />} trend={weekly(history, daily)} />
+          <StatCard
+            label="Total value"
+            value={<LiveTotal total={balance.total} positions={[...positions.equities, ...positions.crypto]} />}
+            icon={<Wallet size={15} />}
+            trend={weekly(history, daily)}
+          />
           <StatCard
             label="Total return"
             value={signed(unrealized)}
@@ -265,6 +271,6 @@ export default async function Home() {
           </Card>
         </div>
       </main>
-    </>
+    </LivePricesProvider>
   );
 }

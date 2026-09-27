@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Modal } from "@heroui/react";
 import { prevCloseFor, priceAgo, priceContext, type Hist } from "@/lib/history";
+import { useLivePrices } from "@/components/LivePrices";
 
 type Position = {
   symbol: string;
@@ -330,7 +331,9 @@ export function PositionsTable({
   const [period, setPeriod] = useState<Period>("1D");
   const [openPosition, setOpenPosition] = useState<Position | null>(null);
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "value", desc: true });
+  const { prices } = useLivePrices();
   if (!rows.length) return null;
+  rows = rows.map((p) => (prices[p.symbol] ? { ...p, price: prices[p.symbol], value: prices[p.symbol] * p.quantity } : p));
 
   const total = rows.reduce((s, p) => s + p.value, 0) || 1;
   const data = rows.map((p) => {

@@ -27,6 +27,7 @@ router
     router.get('news', [controllers.News, 'index'])
     router.get('usage', [controllers.Usage, 'index'])
     router.get('risk', [controllers.Risk, 'index'])
+    router.get('live', [controllers.Live, 'stream'])
   })
   .prefix('/api/v1')
   .use(middleware.internalToken())
