@@ -6,10 +6,15 @@ import { heldPositions } from '#services/poller'
 export async function getRealizedPnl(span = 'year') {
   const accounts = await getAccounts()
   const buckets = await settledRows(
-    accounts.map((a) => () => callTool('get_realized_pnl', { account_number: a.rhs_account_number, span })),
+    accounts.map(
+      (a) => () => callTool('get_realized_pnl', { account_number: a.rhs_account_number, span })
+    ),
     (data) => data.data_points ?? []
   )
-  const total = buckets.reduce((sum: number, b: any) => sum + (b.realized_gain ? Number(b.realized_gain) : 0), 0)
+  const total = buckets.reduce(
+    (sum: number, b: any) => sum + (b.realized_gain ? Number(b.realized_gain) : 0),
+    0
+  )
   return { total, span }
 }
 
@@ -30,7 +35,9 @@ async function settledRows<T>(
   calls: (() => Promise<Awaited<ReturnType<typeof callTool>>>)[],
   pluck: (data: any) => T[]
 ): Promise<T[]> {
-  const settled = await Promise.allSettled(calls.map((call) => call().then((res) => pluck(json(res).data) ?? [])))
+  const settled = await Promise.allSettled(
+    calls.map((call) => call().then((res) => pluck(json(res).data) ?? []))
+  )
   return settled.flatMap((r) => (r.status === 'fulfilled' ? r.value : []))
 }
 
@@ -92,9 +99,11 @@ export async function getSymbolDetails(symbol: string) {
 
   const f = json(fundamentalsRes).data.results?.[0] ?? null
   const earnings = json(earningsRes).data.results ?? []
-  const nextEarnings = earnings.find((e: any) => e.report?.date && new Date(e.report.date) > new Date())
+  const nextEarnings = earnings.find(
+    (e: any) => e.report?.date && new Date(e.report.date) > new Date()
+  )
   const ratings = json(ratingsRes).data.results?.[0]?.ratings ?? null
-  const rsi = rsiRes ? json(rsiRes).data.indicators?.[0]?.series?.[0]?.value ?? null : null
+  const rsi = rsiRes ? (json(rsiRes).data.indicators?.[0]?.series?.[0]?.value ?? null) : null
 
   return {
     symbol,
@@ -207,16 +216,46 @@ export async function getDailyBars(symbols: string[], days = 380): Promise<Map<s
   return out
 }
 
-/** Sector per equity symbol from Robinhood fundamentals (null for most ETFs). */
-export async function getSectors(symbols: string[]): Promise<Map<string, string | null>> {
-  const out = new Map<string, string | null>()
+export type Fundamentals = {
+  sector: string | null
+  fund: boolean
+  description: string | null
+  marketCap: number | null
+  pe: number | null
+  dividendYield: number | null
+  high52w: number | null
+}
+
+export const numOrNull = (x: unknown) =>
+  x === null || x === undefined || x === '' || !Number.isFinite(Number(x)) ? null : Number(x)
+
+/** Robinhood fundamentals per symbol, batched 10 per call. ETFs get sector "Funds & ETFs". */
+export async function getFundamentals(symbols: string[]): Promise<Map<string, Fundamentals>> {
+  const out = new Map<string, Fundamentals>()
   for (let i = 0; i < symbols.length; i += 10) {
-    const { data } = json(await callTool('get_equity_fundamentals', { symbols: symbols.slice(i, i + 10) }))
+    const { data } = json(
+      await callTool('get_equity_fundamentals', { symbols: symbols.slice(i, i + 10) })
+    )
     for (const f of data.results ?? []) {
+      if (!f?.symbol) continue
       // ETFs all come back as sector "Miscellaneous" — the industry is what tells them apart.
-      const fund = /investment trusts|mutual funds/i.test(f?.industry ?? '')
-      if (f?.symbol) out.set(f.symbol, fund ? 'Funds & ETFs' : (f.sector ?? null))
+      const fund = /investment trusts|mutual funds/i.test(f.industry ?? '')
+      out.set(f.symbol, {
+        sector: fund ? 'Funds & ETFs' : (f.sector ?? null),
+        fund,
+        description: f.description ?? null,
+        marketCap: numOrNull(f.market_cap),
+        pe: numOrNull(f.pe_ratio),
+        dividendYield: numOrNull(f.dividend_yield),
+        high52w: numOrNull(f.high_52_weeks),
+      })
     }
   }
   return out
+}
+
+/** Sector per equity symbol from Robinhood fundamentals ("Funds & ETFs" for ETFs). */
+export async function getSectors(symbols: string[]): Promise<Map<string, string | null>> {
+  const f = await getFundamentals(symbols)
+  return new Map([...f].map(([s, x]) => [s, x.sector]))
 }

@@ -25,7 +25,12 @@ export const EPISODES = [
   { name: '2025 tariff shock', from: '2025-02-19', to: '2025-04-08' },
 ]
 
-export type Holding = { symbol: string; type: 'equity' | 'crypto'; value: number; sector: string | null }
+export type Holding = {
+  symbol: string
+  type: 'equity' | 'crypto'
+  value: number
+  sector: string | null
+}
 /** Daily closes keyed by 'YYYY-MM-DD', any order. */
 export type Closes = Map<string, number>
 
@@ -39,9 +44,12 @@ const cov = (a: number[], b: number[]) => {
   const mb = mean(b)
   return a.reduce((s, x, i) => s + (x - ma) * (b[i] - mb), 0) / (a.length - 1)
 }
-const round = (x: number | null, d = 2) => (x === null || !Number.isFinite(x) ? null : Math.round(x * 10 ** d) / 10 ** d)
-const quantile = (sorted: number[], q: number) => sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))]
-const minusDays = (day: string, n: number) => new Date(Date.parse(`${day}T00:00:00Z`) - n * 864e5).toISOString().slice(0, 10)
+const round = (x: number | null, d = 2) =>
+  x === null || !Number.isFinite(x) ? null : Math.round(x * 10 ** d) / 10 ** d
+const quantile = (sorted: number[], q: number) =>
+  sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))]
+const minusDays = (day: string, n: number) =>
+  new Date(Date.parse(`${day}T00:00:00Z`) - n * 864e5).toISOString().slice(0, 10)
 
 /** Small seeded PRNG (mulberry32) so a projection is stable between page loads and testable. */
 function rng(seed: number) {
@@ -57,7 +65,7 @@ function rng(seed: number) {
  * Returns on each benchmark trading day, from the last close on or before that day. Aligning
  * everything to SPY's calendar lets 7-day crypto and 5-day equities share one return series.
  */
-function returnsOnCalendar(closes: Closes, calendar: string[]): (number | null)[] {
+export function returnsOnCalendar(closes: Closes, calendar: string[]): (number | null)[] {
   const days = [...closes.keys()].sort()
   let j = -1
   const closeOn = calendar.map((d) => {
@@ -116,7 +124,7 @@ export function project(daily: number[], beta: number, total: number, seed = 42)
     let peak = 1
     let dd = 0
     atStep[0].push(1)
-    for (let d = 1; d <= HORIZON; ) {
+    for (let d = 1; d <= HORIZON;) {
       const start = Math.floor(random() * (sample.length - BLOCK))
       for (let k = 0; k < BLOCK && d <= HORIZON; k++, d++) {
         level *= 1 + sample[start + k]
@@ -135,7 +143,8 @@ export function project(daily: number[], beta: number, total: number, seed = 42)
   })
   const horizon = (days: number, label: string) => {
     const sorted = [...atStep[Math.round(days / STEP)]].sort((a, b) => a - b)
-    const share = (pred: (x: number) => boolean) => round((sorted.filter(pred).length / sorted.length) * 100, 0)
+    const share = (pred: (x: number) => boolean) =>
+      round((sorted.filter(pred).length / sorted.length) * 100, 0)
     return {
       label,
       days,
@@ -166,19 +175,31 @@ export function project(daily: number[], beta: number, total: number, seed = 42)
 }
 
 /** Pure risk math — everything the page shows, from holdings + their daily closes. */
-export function computeRisk(holdings: Holding[], cash: number, closes: Map<string, Closes>, benchmark: Closes) {
+export function computeRisk(
+  holdings: Holding[],
+  cash: number,
+  closes: Map<string, Closes>,
+  benchmark: Closes
+) {
   const total = holdings.reduce((s, h) => s + h.value, 0) + cash
   const calendar = [...benchmark.keys()].sort()
   const mkt = returnsOnCalendar(benchmark, calendar)
   // 1-year window for beta/vol/VaR/correlations; the full ~7 years feed stress tests and projections.
-  const yearFrom = Math.max(1, calendar.findIndex((d) => d >= minusDays(calendar.at(-1) ?? '', 365)))
+  const yearFrom = Math.max(
+    1,
+    calendar.findIndex((d) => d >= minusDays(calendar.at(-1) ?? '', 365))
+  )
   const inYear = (i: number) => i >= yearFrom
 
   const positions = holdings
     .map((h) => {
       const stable = STABLECOINS.has(h.symbol)
-      const r = stable ? calendar.map((_, i) => (i ? 0 : null)) : returnsOnCalendar(closes.get(h.symbol) ?? new Map(), calendar)
-      const pairs = r.flatMap((x, i) => (inYear(i) && x !== null && mkt[i] !== null ? [[x, mkt[i]!]] : []))
+      const r = stable
+        ? calendar.map((_, i) => (i ? 0 : null))
+        : returnsOnCalendar(closes.get(h.symbol) ?? new Map(), calendar)
+      const pairs = r.flatMap((x, i) =>
+        inYear(i) && x !== null && mkt[i] !== null ? [[x, mkt[i]!]] : []
+      )
       let beta: number | null = null
       let vol: number | null = null
       if (pairs.length >= MIN_POINTS) {
@@ -191,12 +212,24 @@ export function computeRisk(holdings: Holding[], cash: number, closes: Map<strin
       const betaUsed = beta ?? (stable ? 0 : 1)
       // Days before an asset's history starts are filled with β × market, so a 2020 replay still counts
       // PLTR (IPO'd Sep 2020) instead of treating it as cash. `proxied` tracks where that happened.
-      const filled = r.map((x, i) => (x ?? (mkt[i] !== null ? betaUsed * mkt[i]! : 0)))
-      return { ...h, weight: total ? h.value / total : 0, beta, betaUsed, vol, days: pairs.length, r, filled, stable }
+      const filled = r.map((x, i) => x ?? (mkt[i] !== null ? betaUsed * mkt[i]! : 0))
+      return {
+        ...h,
+        weight: total ? h.value / total : 0,
+        beta,
+        betaUsed,
+        vol,
+        days: pairs.length,
+        r,
+        filled,
+        stable,
+      }
     })
     .sort((a, b) => b.value - a.value)
 
-  const portfolioAll = calendar.map((_, i) => positions.reduce((s, p) => s + p.weight * p.filled[i], 0))
+  const portfolioAll = calendar.map((_, i) =>
+    positions.reduce((s, p) => s + p.weight * p.filled[i], 0)
+  )
   const portfolio = portfolioAll.slice(yearFrom)
   const market = mkt.slice(yearFrom).map((x) => x ?? 0)
   const dailyVol = portfolio.length >= MIN_POINTS ? std(portfolio) : null
@@ -265,23 +298,35 @@ export function computeRisk(holdings: Holding[], cash: number, closes: Map<strin
   return {
     totalValue: round(total),
     cash: round(cash),
-    window: { from: calendar[yearFrom] ?? null, to: calendar.at(-1) ?? null, days: portfolio.length },
+    window: {
+      from: calendar[yearFrom] ?? null,
+      to: calendar.at(-1) ?? null,
+      days: portfolio.length,
+    },
     concentration: {
       holdings: positions.length,
-      top1: positions[0] ? { symbol: positions[0].symbol, pct: round(positions[0].weight * 100, 1) } : null,
+      top1: positions[0]
+        ? { symbol: positions[0].symbol, pct: round(positions[0].weight * 100, 1) }
+        : null,
       top3Pct: round(weights.slice(0, 3).reduce((s, w) => s + w, 0) * 100, 1),
       // 1/Σw² — "you're as diversified as N equal-sized positions".
       effectivePositions: round(1 / weights.reduce((s, w) => s + w * w, 0) || 0, 1),
     },
     sectors: [...sectorValue]
-      .map(([sector, value]) => ({ sector, value: round(value), pct: round((value / total) * 100, 1) }))
+      .map(([sector, value]) => ({
+        sector,
+        value: round(value),
+        pct: round((value / total) * 100, 1),
+      }))
       .sort((a, b) => b.value! - a.value!),
     beta: round(beta),
     volatilityPct: round(dailyVol === null ? null : dailyVol * Math.sqrt(252) * 100, 1),
     // Parametric 1-day 95% VaR: a normal day loses less than this 19 times out of 20.
     var95: round(dailyVol === null ? null : 1.645 * dailyVol * total),
     maxDrawdownPct: round(maxDrawdown * 100, 1),
-    worstDay: worst.day ? { day: worst.day, pct: round(worst.pct * 100, 2), loss: round(worst.pct * total) } : null,
+    worstDay: worst.day
+      ? { day: worst.day, pct: round(worst.pct * 100, 2), loss: round(worst.pct * total) }
+      : null,
     scenarios: [-5, -10, -20].map((m) => ({
       marketPct: m,
       loss: round(positions.reduce((s, p) => s + p.value * p.betaUsed, 0) * (m / 100)),
@@ -296,8 +341,13 @@ export function computeRisk(holdings: Holding[], cash: number, closes: Map<strin
         .map((p) => ({ ...p, corr: round(p.corr) })),
       diversificationRatio: round(diversificationRatio),
       // What the mix's volatility would be if everything moved in lockstep, vs what it is.
-      riskReductionPct: round(diversificationRatio ? (1 - 1 / diversificationRatio) * 100 : null, 0),
+      riskReductionPct: round(
+        diversificationRatio ? (1 - 1 / diversificationRatio) * 100 : null,
+        0
+      ),
     },
+    // Last year's daily returns of today's mix and of SPY, aligned — Discover measures portfolio fit with them.
+    series: { days: calendar.slice(yearFrom), portfolio, market },
     positions: positions.map((p) => ({
       symbol: p.symbol,
       type: p.type,
@@ -322,7 +372,9 @@ export type EarningsReport = { date: string; timing: 'am' | 'pm' | null }
 export function earningsMoves(reports: EarningsReport[], closes: Closes, today: string) {
   const days = [...closes.keys()].sort()
   const moves: number[] = []
-  for (const r of [...reports].filter((x) => x.date < today).sort((a, b) => b.date.localeCompare(a.date))) {
+  for (const r of [...reports]
+    .filter((x) => x.date < today)
+    .sort((a, b) => b.date.localeCompare(a.date))) {
     const i = days.findIndex((d) => d >= r.date)
     if (i < 1) continue
     const [before, after] = r.timing === 'pm' && days[i] === r.date ? [i, i + 1] : [i - 1, i]
@@ -343,7 +395,9 @@ async function earningsAhead(holdings: Holding[], closes: Map<string, Closes>, t
       const reports: EarningsReport[] = (data.results ?? [])
         .filter((x: any) => x.report?.date)
         .map((x: any) => ({ date: x.report.date, timing: x.report.timing ?? null }))
-      const next = reports.filter((x) => x.date >= today && x.date <= horizon).sort((a, b) => a.date.localeCompare(b.date))[0]
+      const next = reports
+        .filter((x) => x.date >= today && x.date <= horizon)
+        .sort((a, b) => a.date.localeCompare(b.date))[0]
       if (!next) return null
       const moves = earningsMoves(reports, closes.get(h.symbol) ?? new Map(), today)
       if (!moves.length) return null
@@ -385,7 +439,8 @@ async function cryptoCloses(symbols: string[]): Promise<Map<string, Closes>> {
         const candles = res.ok ? await res.json() : null
         if (!Array.isArray(candles) || !candles.length) break // coin not listed that far back
         // [time, low, high, open, close, volume]
-        for (const c of candles) closes.set(new Date(c[0] * 1000).toISOString().slice(0, 10), Number(c[4]))
+        for (const c of candles)
+          closes.set(new Date(c[0] * 1000).toISOString().slice(0, 10), Number(c[4]))
       } catch {
         break
       }
@@ -432,7 +487,8 @@ export function startRisk() {
 
 async function build(): Promise<Risk> {
   const { equities, crypto } = await heldPositions()
-  const cash = (await getLatest())?.balance.accounts.reduce((s, a) => s + a.cash, 0) ?? 0
+  const latest = await getLatest()
+  const cash = latest?.balance.accounts.reduce((s, a) => s + a.cash, 0) ?? 0
   const equitySymbols = [...new Set(equities.map((p) => p.symbol))]
 
   const [bars, sectors, cryptoMap] = await Promise.all([
@@ -445,9 +501,17 @@ async function build(): Promise<Risk> {
 
   // Same symbol in two accounts shows up twice — merge before weighting.
   const merged = new Map<string, Holding>()
-  for (const [type, list] of [['equity', equities], ['crypto', crypto]] as const) {
+  for (const [type, list] of [
+    ['equity', equities],
+    ['crypto', crypto],
+  ] as const) {
     for (const p of list) {
-      const h = merged.get(p.symbol) ?? { symbol: p.symbol, type, value: 0, sector: sectors.get(p.symbol) ?? null }
+      const h = merged.get(p.symbol) ?? {
+        symbol: p.symbol,
+        type,
+        value: 0,
+        sector: sectors.get(p.symbol) ?? null,
+      }
       h.value += p.value
       merged.set(p.symbol, h)
     }
