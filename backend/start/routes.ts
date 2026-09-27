@@ -27,6 +27,7 @@ router
     router.get('news', [controllers.News, 'index'])
     router.get('usage', [controllers.Usage, 'index'])
     router.get('risk', [controllers.Risk, 'index'])
+    router.get('risk/returns/:symbol', [controllers.Risk, 'returns'])
     router.get('live', [controllers.Live, 'stream'])
     router.get('discover', [controllers.Discover, 'index'])
     router.get('insiders', [controllers.Insiders, 'index'])

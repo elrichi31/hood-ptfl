@@ -221,7 +221,7 @@ async function build(): Promise<State> {
   const pool = [...new Set([...watchlist, ...peers, ...popular.filter((s) => !held.has(s))])]
 
   // 2. Robinhood, batched and free: bars, fundamentals, quotes, analyst ratings for the whole pool.
-  const [bars, fundamentals] = await Promise.all([getDailyBars(pool, 380), getFundamentals(pool)])
+  const [bars, fundamentals] = await Promise.all([getDailyBars(pool, 380, 'all'), getFundamentals(pool)])
   const quotes = new Map<string, any>()
   const ratings = new Map<string, any>()
   for (const batch of chunks(pool, 10)) {

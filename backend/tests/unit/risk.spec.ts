@@ -1,5 +1,5 @@
 import { test } from '@japa/runner'
-import { computeRisk, earningsMoves, project, type Closes } from '#services/risk'
+import { computeRisk, earningsMoves, project, tailRisk, type Closes } from '#services/risk'
 
 // 30 trading days of a benchmark that alternates +1% / -1%.
 const days = Array.from({ length: 30 }, (_, i) => `2026-01-${String(i + 1).padStart(2, '0')}`)
@@ -17,7 +17,10 @@ test('beta, concentration, drawdown and scenarios from daily closes', ({ assert 
       { symbol: 'USDC', type: 'crypto', value: 100, sector: null },
     ],
     0,
-    new Map([['LEV', series(2)], ['SPY', spy]]),
+    new Map([
+      ['LEV', series(2)],
+      ['SPY', spy],
+    ]),
     spy
   )
 
@@ -72,4 +75,16 @@ test('earnings moves use the session that priced the report in', ({ assert }) =>
   assert.lengthOf(moves, 2)
   assert.closeTo(moves[0], 10, 1e-9) // newest first
   assert.closeTo(moves[1], 10, 1e-9)
+})
+
+test('tailRisk: historical VaR is the 5th-percentile loss, CVaR the average beyond it', ({
+  assert,
+}) => {
+  // 100 days: 95 flat, 5 losses of 1..5%.
+  const daily = [...Array(95).fill(0), -0.01, -0.02, -0.03, -0.04, -0.05]
+  const { var95, cvar95 } = tailRisk(daily, 1000)
+  assert.equal(var95, 10) // the 5th-worst day: −1%
+  assert.equal(cvar95, 30) // mean of the worst five: −3%
+  assert.isAbove(cvar95!, var95!)
+  assert.deepEqual(tailRisk([0.01], 1000), { var95: null, cvar95: null })
 })

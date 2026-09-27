@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth";
 import { backend } from "@/lib/backend";
 import { Card } from "@/components/Card";
 import { ProjectionChart, type Band } from "@/components/ProjectionChart";
+import { RiskSimulator } from "@/components/RiskSimulator";
 
 type Stats = { returnPct: number; volatilityPct: number; sharpe: number; sortino: number | null; maxDrawdownPct: number } | null;
 type Risk = {
@@ -17,6 +18,7 @@ type Risk = {
   beta: number;
   volatilityPct: number | null;
   var95: number | null;
+  cvar95: number | null;
   maxDrawdownPct: number;
   worstDay: { day: string; pct: number; loss: number } | null;
   scenarios: { marketPct: number; loss: number }[];
@@ -26,7 +28,7 @@ type Risk = {
     bands: Band[];
     drawdownTypicalPct: number;
     drawdownBadPct: number;
-    assumptions: { expectedReturnPct: number; riskFreePct: number; equityPremiumPct: number; volatilityPct: number; sampleDays: number; simulations: number };
+    assumptions: { expectedReturnPct: number; riskFreePct: number; equityPremiumPct: number; volatilityPct: number; sampleDays: number; simulations: number; estimatedPct: number };
   } | null;
   stress: { name: string; from: string; to: string; portfolioPct: number; spyPct: number; loss: number; estimatedPct: number }[];
   correlation: { topPairs: { a: string; b: string; corr: number }[]; diversificationRatio: number | null; riskReductionPct: number | null };
@@ -42,7 +44,9 @@ type Risk = {
     betaAssumed: number | null;
     volatilityPct: number | null;
     days: number;
+    returns: number[];
   }[];
+  series: { days: string[]; portfolio: number[]; market: number[] };
 };
 
 const money = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
@@ -105,19 +109,20 @@ export default async function RiskPage() {
   const worstScenario = Math.max(...r.scenarios.map((s) => Math.abs(s.loss)), 1);
   const assumed = r.positions.filter((p) => p.betaAssumed !== null && p.betaAssumed !== 0);
   const worstStress = Math.max(1, ...r.stress.flatMap((s) => [Math.abs(s.portfolioPct), Math.abs(s.spyPct)]));
-  const byRisk = [...r.positions].filter((p) => p.riskPct !== null).sort((a, b) => b.riskPct! - a.riskPct!).slice(0, 10);
+  const byRisk = [...r.positions].filter((p) => p.riskPct !== null).sort((a, b) => b.riskPct! - a.riskPct!).slice(0, 8);
   const maxShare = Math.max(1, ...byRisk.map((p) => Math.max(p.riskPct!, p.weightPct)));
   const heavy = byRisk.filter((p) => p.riskPct! >= 2 * p.weightPct && p.riskPct! >= 5);
+  const [r1, r2] = byRisk;
   const year = r.projection?.horizons.at(-1);
-  const earningsAtStake = r.earnings.reduce((s, e) => s + e.atStake, 0);
+  const holdings = r.positions.map((p) => ({ symbol: p.symbol, type: p.type, sector: p.sector, value: p.value, returns: p.returns }));
 
   return (
     <main className="mx-auto w-full max-w-[1280px] flex-1 px-4 pt-6 pb-24">
       <h1 className="text-2xl font-semibold tracking-tight">Risk</h1>
       <p className="mt-1 text-sm text-[var(--muted)]">
-        How your current mix behaves, measured against SPY over the last year
-        {r.window.from && ` (${shortDate(r.window.from)} – ${shortDate(r.window.to!)})`}, and what the next one could look like.
-        Estimates from past prices, not advice.
+        How today&apos;s mix would have behaved over the last year
+        {r.window.from && ` (${shortDate(r.window.from)} – ${shortDate(r.window.to!)})`}, measured against SPY, and what the next one
+        could look like. Hypothetical: your actual past holdings were different. Dividends included. Estimates, not advice.
       </p>
 
       <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -126,20 +131,61 @@ export default async function RiskPage() {
           label="Volatility"
           icon={<Gauge size={15} />}
           value={r.volatilityPct === null ? "—" : `${r.volatilityPct}%`}
-          note={`Annualized · SPY ${r.vsMarket.spy?.volatilityPct ?? "—"}%`}
+          note={`Last year, annualized · SPY ${r.vsMarket.spy?.volatilityPct ?? "—"}%${r.projection ? ` · 7-year ${r.projection.assumptions.volatilityPct}%` : ""}`}
         />
         <Stat
           label="1-day VaR (95%)"
           icon={<ShieldAlert size={15} />}
           value={r.var95 === null ? "—" : money(r.var95)}
-          note="A normal day loses less than this, 19 days out of 20"
+          note={
+            r.cvar95 === null
+              ? "1 day in 20 lost more than this"
+              : `1 day in 20 lost more; on those days ${money(r.cvar95)} on average (CVaR)`
+          }
         />
         <Stat
           label="Max drawdown"
           icon={<TrendingDown size={15} />}
           value={`${r.maxDrawdownPct}%`}
-          note={r.worstDay ? `Worst day ${r.worstDay.pct}% (${money(r.worstDay.loss)}) on ${shortDate(r.worstDay.day)}` : "Peak-to-trough, last year"}
+          note={
+            r.worstDay
+              ? `Today's mix, last year · worst day ${r.worstDay.pct}% (${money(r.worstDay.loss)}) on ${shortDate(r.worstDay.day)}`
+              : "Today's mix, peak-to-trough, last year"
+          }
         />
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12">
+        <Card title="Where your risk comes from" className="lg:col-span-5">
+          {r1 && r2 && (
+            <p className="mb-3 rounded-lg bg-[var(--surface-secondary)] px-3 py-2 text-sm">
+              <span className="font-medium">
+                {r1.symbol} + {r2.symbol}
+              </span>{" "}
+              cause <span className="font-figures font-mono font-semibold">{(r1.riskPct! + r2.riskPct!).toFixed(0)}%</span> of your
+              portfolio&apos;s swings with{" "}
+              <span className="font-figures font-mono">{(r1.weightPct + r2.weightPct).toFixed(0)}%</span> of the money.
+            </p>
+          )}
+          <Legend items={[["Share of money", "var(--muted)"], ["Share of risk", "var(--accent)"]]} />
+          <div className="mt-3 flex flex-col gap-2.5">
+            {byRisk.map((p) => (
+              <div key={p.symbol} className="flex flex-col gap-1">
+                <Bar label={p.symbol} pct={(p.weightPct / maxShare) * 100} right={`${p.weightPct}%`} color="var(--muted)" title="Share of money" />
+                <Bar label="" pct={(p.riskPct! / maxShare) * 100} right={`${p.riskPct}%`} title="Share of portfolio volatility it causes" />
+              </div>
+            ))}
+          </div>
+          <p className="mt-4 text-xs text-[var(--muted)]">
+            Share of risk = how much of the portfolio&apos;s daily swings each position causes, given how it moves with everything else.
+            {heavy.length > 0 &&
+              ` ${heavy.map((p) => `${p.symbol} carries ${(p.riskPct! / p.weightPct).toFixed(1)}× its weight`).join(", ")}.`}
+          </p>
+        </Card>
+
+        <Card title="Try a trade" className="lg:col-span-7">
+          <RiskSimulator holdings={holdings} cash={r.cash} market={r.series.market} />
+        </Card>
       </div>
 
       {r.projection && year && (
@@ -147,11 +193,14 @@ export default async function RiskPage() {
           <Card title="Next 12 months (simulated)" className="lg:col-span-8">
             <ProjectionChart bands={r.projection.bands} start={r.totalValue} />
             <p className="mt-3 text-xs text-[var(--muted)]">
-              {r.projection.assumptions.simulations.toLocaleString("en-US")} simulated years built from{" "}
-              {Math.round(r.projection.assumptions.sampleDays / 252)} years of your mix&apos;s real daily moves (volatility{" "}
-              {r.projection.assumptions.volatilityPct}%, crashes included). Growth is not last year&apos;s return: it assumes{" "}
-              {r.projection.assumptions.expectedReturnPct}%/yr ({r.projection.assumptions.riskFreePct}% risk-free + β{r.beta} ×{" "}
-              {r.projection.assumptions.equityPremiumPct}% equity premium). No new deposits.
+              {r.projection.assumptions.simulations.toLocaleString("en-US")} simulated years resampled from{" "}
+              {Math.round(r.projection.assumptions.sampleDays / 252)} years of daily moves of today&apos;s mix. That window includes
+              2020 and 2022, so its volatility ({r.projection.assumptions.volatilityPct}%) is above last year&apos;s.{" "}
+              {r.projection.assumptions.estimatedPct > 0 &&
+                `${r.projection.assumptions.estimatedPct}% of that history is estimated from beta for holdings that weren't trading yet. `}
+              Growth is not last year&apos;s return: it assumes {r.projection.assumptions.expectedReturnPct}%/yr (
+              {r.projection.assumptions.riskFreePct}% risk-free + β{r.beta} × {r.projection.assumptions.equityPremiumPct}% equity
+              premium). Bands are percentiles of the simulation, not guarantees. No new deposits.
             </p>
           </Card>
 
@@ -171,8 +220,8 @@ export default async function RiskPage() {
                 {(
                   [
                     ["Median", (h) => money(h.p50)],
-                    ["Bad (1 in 20)", (h) => money(h.p5)],
-                    ["Good (1 in 20)", (h) => money(h.p95)],
+                    ["5th percentile", (h) => money(h.p5)],
+                    ["95th percentile", (h) => money(h.p95)],
                     ["Chance of a loss", (h) => `${h.probLossPct}%`],
                     ["Down 10%+", (h) => `${h.probDown10Pct}%`],
                     ["Down 20%+", (h) => `${h.probDown20Pct}%`],
@@ -191,7 +240,8 @@ export default async function RiskPage() {
             </table>
             <p className="mt-4 text-xs text-[var(--muted)]">
               Somewhere in a typical year expect a dip of about{" "}
-              <span className="text-[var(--foreground)]">{r.projection.drawdownTypicalPct}%</span> from a high; in a bad one (1 in 20),{" "}
+              <span className="text-[var(--foreground)]">{r.projection.drawdownTypicalPct}%</span> from a high; at the 5th percentile
+              of simulated years,{" "}
               <span className="text-[var(--danger)]">{r.projection.drawdownBadPct}%</span> (
               {money((r.projection.drawdownBadPct / 100) * r.totalValue)}).
             </p>
@@ -200,7 +250,11 @@ export default async function RiskPage() {
       )}
 
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12">
-        <Card title="Past crises, today's mix" className="lg:col-span-7">
+        <Card title="Past crises, replayed with today's mix" className="lg:col-span-7">
+          <p className="mb-3 text-xs text-[var(--muted)]">
+            A hypothetical stress test: what these holdings, at today&apos;s weights, did in each episode. You didn&apos;t own this mix
+            then.
+          </p>
           <Legend items={[["Your mix", "var(--accent)"], ["SPY", "var(--muted)"]]} />
           <div className="mt-3 flex flex-col gap-4">
             {r.stress.map((s) => (
@@ -247,7 +301,7 @@ export default async function RiskPage() {
 
           {r.vsMarket.portfolio && r.vsMarket.spy && (
             <>
-              <p className={`${label} mt-6`}>Last year: your mix vs SPY</p>
+              <p className={`${label} mt-6`}>Last year: today&apos;s mix replayed vs SPY</p>
               <table className="w-full text-sm">
                 <tbody className="font-figures font-mono text-xs">
                   {(
@@ -283,23 +337,6 @@ export default async function RiskPage() {
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12">
-        <Card title="Where your risk comes from" className="lg:col-span-7">
-          <Legend items={[["Share of money", "var(--muted)"], ["Share of risk", "var(--accent)"]]} />
-          <div className="mt-3 flex flex-col gap-2.5">
-            {byRisk.map((p) => (
-              <div key={p.symbol} className="flex flex-col gap-1">
-                <Bar label={p.symbol} pct={(p.weightPct / maxShare) * 100} right={`${p.weightPct}%`} color="var(--muted)" title="Share of money" />
-                <Bar label="" pct={(p.riskPct! / maxShare) * 100} right={`${p.riskPct}%`} title="Share of portfolio volatility it causes" />
-              </div>
-            ))}
-          </div>
-          <p className="mt-4 text-xs text-[var(--muted)]">
-            Share of risk = how much of the portfolio&apos;s daily swings each position causes, given how it moves with everything else.
-            {heavy.length > 0 &&
-              ` ${heavy.map((p) => `${p.symbol} carries ${(p.riskPct! / p.weightPct).toFixed(1)}× its weight`).join(", ")}.`}
-          </p>
-        </Card>
-
         <Card title="Moves together" className="lg:col-span-5">
           {r.correlation.riskReductionPct !== null && (
             <p className="text-sm">
@@ -318,11 +355,9 @@ export default async function RiskPage() {
             1.00 = move identically. Pairs above ~0.8 behave like one bigger bet. Positions under 2% of the portfolio are left out.
           </p>
         </Card>
-      </div>
 
-      {r.earnings.length > 0 && (
-        <div className="mt-4">
-          <Card title="Earnings in the next 60 days">
+        {r.earnings.length > 0 && (
+          <Card title="Event risk: earnings in the next 60 days" className="lg:col-span-7">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[560px] text-sm">
                 <thead>
@@ -355,12 +390,12 @@ export default async function RiskPage() {
               </table>
             </div>
             <p className="mt-3 text-xs text-[var(--muted)]">
-              Typical move = average absolute move on earnings day over the last ~2 years. Together these reports put about{" "}
-              <span className="text-[var(--foreground)]">±{money(earningsAtStake)}</span> in play.
+              Typical move = average absolute move on the session that priced in each of the last ~2 years of reports. Each is a
+              one-day jump for that holding; they land on different days and don&apos;t add up to a portfolio move.
             </p>
           </Card>
-        </div>
-      )}
+        )}
+      </div>
 
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12">
         <Card title="Concentration" className="lg:col-span-5">

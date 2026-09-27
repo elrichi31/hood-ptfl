@@ -1,7 +1,7 @@
 import db from '@adonisjs/lucid/services/db'
 import logger from '@adonisjs/core/services/logger'
 import { getLatest, heldPositions } from '#services/poller'
-import { getDailyBars, getSectors } from '#services/enrichment'
+import { getDailyBars, getFundamentals, getSectors } from '#services/enrichment'
 import { etClock } from '#services/market_hours'
 import { trackedFetch } from '#services/api_usage'
 import { callTool } from '#services/robinhood'
@@ -77,6 +77,22 @@ export function returnsOnCalendar(closes: Closes, calendar: string[]): (number |
     const b = closeOn[i]
     return i > 0 && a && b ? b / a - 1 : null
   })
+}
+
+/**
+ * Historical 1-day tail risk from actual daily returns (fat tails included, no normal assumption):
+ * VaR = the loss only 5% of days were worse than; CVaR (expected shortfall) = the average loss on
+ * those worst 5% of days. Both as positive dollar amounts.
+ */
+export function tailRisk(daily: number[], total: number) {
+  if (daily.length < MIN_POINTS) return { var95: null, cvar95: null }
+  const sorted = [...daily].sort((a, b) => a - b)
+  const k = Math.max(1, Math.floor(sorted.length * 0.05))
+  const tail = sorted.slice(0, k)
+  return {
+    var95: round(-sorted[k - 1] * total),
+    cvar95: round(-mean(tail) * total),
+  }
 }
 
 /** Annualized return, vol, Sharpe, Sortino and max drawdown of a daily return series. */
@@ -294,6 +310,17 @@ export function computeRisk(
   }
   if (cash > 0) sectorValue.set('Cash', cash)
 
+  // Share of the projection's sample that is estimated (β × market) rather than observed prices.
+  const sampleDays = Math.max(1, calendar.length - 1)
+  const estimatedSharePct =
+    positions
+      .filter((p) => !p.stable)
+      .reduce(
+        (s, p) => s + p.weight * (p.r.slice(1).filter((x) => x === null).length / sampleDays),
+        0
+      ) * 100
+  const projection = project(portfolioAll.slice(1), beta, total)
+
   const weights = positions.map((p) => p.weight)
   return {
     totalValue: round(total),
@@ -321,8 +348,7 @@ export function computeRisk(
       .sort((a, b) => b.value! - a.value!),
     beta: round(beta),
     volatilityPct: round(dailyVol === null ? null : dailyVol * Math.sqrt(252) * 100, 1),
-    // Parametric 1-day 95% VaR: a normal day loses less than this 19 times out of 20.
-    var95: round(dailyVol === null ? null : 1.645 * dailyVol * total),
+    ...tailRisk(portfolio, total),
     maxDrawdownPct: round(maxDrawdown * 100, 1),
     worstDay: worst.day
       ? { day: worst.day, pct: round(worst.pct * 100, 2), loss: round(worst.pct * total) }
@@ -332,7 +358,10 @@ export function computeRisk(
       loss: round(positions.reduce((s, p) => s + p.value * p.betaUsed, 0) * (m / 100)),
     })),
     vsMarket: { portfolio: stats(portfolio), spy: stats(market), riskFreePct: RISK_FREE * 100 },
-    projection: project(portfolioAll.slice(1), beta, total),
+    projection: projection && {
+      ...projection,
+      assumptions: { ...projection.assumptions, estimatedPct: round(estimatedSharePct, 0) },
+    },
     stress,
     correlation: {
       topPairs: pairs
@@ -359,6 +388,9 @@ export function computeRisk(
       betaAssumed: p.beta === null ? p.betaUsed : null,
       volatilityPct: round(p.vol === null ? null : p.vol * 100, 1),
       days: p.days,
+      // Last year's daily total returns (aligned with series.days) — the Risk page's trade simulator
+      // recomputes everything client-side from these.
+      returns: p.filled.slice(yearFrom).map((x) => round(x, 5)!),
     })),
   }
 }
@@ -467,6 +499,27 @@ async function cryptoCloses(symbols: string[]): Promise<Map<string, Closes>> {
   return out
 }
 
+/**
+ * Last year's daily total returns for any symbol, aligned to the Risk window — lets the trade simulator
+ * try a stock you don't hold. Days before its history starts count as the market's move (β≈1).
+ */
+export async function symbolReturns(symbol: string) {
+  const risk = await getRisk()
+  const [bars, fundamentals] = await Promise.all([
+    getDailyBars([symbol], 380, 'all'),
+    getFundamentals([symbol]),
+  ])
+  const b = bars.get(symbol)
+  if (!b?.length) return null
+  const r = returnsOnCalendar(new Map(b.map((x) => [x.day, x.c])), risk.series.days)
+  return {
+    symbol,
+    sector: fundamentals.get(symbol)?.sector ?? null,
+    observedDays: r.filter((x) => x !== null).length,
+    returns: r.map((x, i) => round(x ?? risk.series.market[i], 5)!),
+  }
+}
+
 type Risk = ReturnType<typeof computeRisk> & { earnings: Awaited<ReturnType<typeof earningsAhead>> }
 // ponytail: in-memory 6h cache like getReferencePrices — daily bars and sectors barely move intraday.
 let cache: { at: number; data: Risk } | null = null
@@ -492,7 +545,7 @@ async function build(): Promise<Risk> {
   const equitySymbols = [...new Set(equities.map((p) => p.symbol))]
 
   const [bars, sectors, cryptoMap] = await Promise.all([
-    getDailyBars([...new Set([...equitySymbols, BENCHMARK])], HISTORY_DAYS),
+    getDailyBars([...new Set([...equitySymbols, BENCHMARK])], HISTORY_DAYS, 'all'),
     getSectors(equitySymbols),
     cryptoCloses([...new Set(crypto.map((p) => p.symbol))]),
   ])

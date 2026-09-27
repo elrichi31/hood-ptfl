@@ -42,7 +42,7 @@ export function ProjectionChart({ bands, start }: { bands: Band[]; start: number
         viewBox={`0 0 ${W} ${H}`}
         className="w-full"
         role="img"
-        aria-label={`Simulated value in one year: median ${money(end.p50)}, 1-in-20 bad case ${money(end.p5)}, 1-in-20 good case ${money(end.p95)}`}
+        aria-label={`Simulated value in one year: median ${money(end.p50)}, 5th percentile ${money(end.p5)}, 95th percentile ${money(end.p95)}`}
         onMouseMove={onMove}
         onMouseLeave={() => setHover(null)}
       >
@@ -59,9 +59,9 @@ export function ProjectionChart({ bands, start }: { bands: Band[]; start: number
         {/* Direct labels at the end of each edge */}
         {(
           [
-            ["p95", "Good year (1 in 20)"],
+            ["p95", "95th percentile"],
             ["p50", "Median"],
-            ["p5", "Bad year (1 in 20)"],
+            ["p5", "5th percentile"],
           ] as const
         ).map(([k, label]) => (
           <g key={k}>

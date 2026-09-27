@@ -188,7 +188,15 @@ export async function getReferencePrices() {
 export type Bar = { t: number; day: string; c: number }
 
 /** Daily closes per equity symbol, oldest first — ~1 year by default (one Robinhood call per 10 symbols). */
-export async function getDailyBars(symbols: string[], days = 380): Promise<Map<string, Bar[]>> {
+/**
+ * `adjustment`: 'split' (Robinhood's default — price returns, what its app shows) or 'all' (split +
+ * dividends — total return; risk math needs it, or every ex-dividend drop of JEPQ/JEPI/MSTY reads as a loss).
+ */
+export async function getDailyBars(
+  symbols: string[],
+  days = 380,
+  adjustment: 'split' | 'all' = 'split'
+): Promise<Map<string, Bar[]>> {
   const now = Date.now()
   const out = new Map<string, Bar[]>()
   for (let i = 0; i < symbols.length; i += 10) {
@@ -198,6 +206,7 @@ export async function getDailyBars(symbols: string[], days = 380): Promise<Map<s
         start_time: new Date(now - days * 864e5).toISOString(),
         end_time: new Date(now).toISOString(),
         interval: 'day',
+        adjustment_type: adjustment,
       })
     )
     for (const r of res.results ?? []) {
