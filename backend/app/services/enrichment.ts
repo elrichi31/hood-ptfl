@@ -178,15 +178,15 @@ export async function getReferencePrices() {
 
 export type Bar = { t: number; day: string; c: number }
 
-/** ~1 year of daily closes per equity symbol, oldest first (one Robinhood call per 10 symbols). */
-export async function getDailyBars(symbols: string[]): Promise<Map<string, Bar[]>> {
+/** Daily closes per equity symbol, oldest first — ~1 year by default (one Robinhood call per 10 symbols). */
+export async function getDailyBars(symbols: string[], days = 380): Promise<Map<string, Bar[]>> {
   const now = Date.now()
   const out = new Map<string, Bar[]>()
   for (let i = 0; i < symbols.length; i += 10) {
     const { data: res } = json(
       await callTool('get_equity_historicals', {
         symbols: symbols.slice(i, i + 10),
-        start_time: new Date(now - 380 * 864e5).toISOString(),
+        start_time: new Date(now - days * 864e5).toISOString(),
         end_time: new Date(now).toISOString(),
         interval: 'day',
       })
