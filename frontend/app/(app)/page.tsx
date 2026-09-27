@@ -1,7 +1,6 @@
-import type { ReactNode } from "react";
 import { headers } from "next/headers";
 import { viewerTz } from "@/lib/tz";
-import { Wallet, TrendingUp, CalendarClock, CalendarDays, PiggyBank } from "lucide-react";
+import { Wallet, TrendingUp, CalendarDays, PiggyBank } from "lucide-react";
 import { redirect } from "next/navigation";
 import { Card } from "@/components/Card";
 import { PortfolioExplorer, type PositionHistory } from "@/components/PortfolioExplorer";
@@ -11,7 +10,8 @@ import { AllocationChart, TopMoversChart } from "@/components/AnalysisCharts";
 import { auth } from "@/lib/auth";
 import { prevCloseIndex, robinhoodToday } from "@/lib/history";
 import { backend } from "@/lib/backend";
-import { LivePricesProvider, LiveTotal } from "@/components/LivePrices";
+import { LivePricesProvider, LiveToday, LiveTotal } from "@/components/LivePrices";
+import { StatCard } from "@/components/StatCard";
 
 
 type Balance = {
@@ -40,20 +40,6 @@ function ago(iso: string) {
   return min < 60 ? rtf.format(-min, "minute") : rtf.format(-Math.round(min / 60), "hour");
 }
 const signed = (n: number) => (n >= 0 ? `+${money(n)}` : `-${money(Math.abs(n))}`);
-
-function Sparkline({ values, up }: { values: number[]; up: boolean }) {
-  if (values.length < 2) return null;
-  const min = Math.min(...values);
-  const range = Math.max(...values) - min || 1;
-  const pts = values.map((v, i) => `${(i / (values.length - 1)) * 100},${28 - ((v - min) / range) * 26}`);
-  const color = up ? "var(--success)" : "var(--danger)";
-  return (
-    <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="h-10 w-24 shrink-0" aria-hidden>
-      <polygon points={`0,30 ${pts.join(" ")} 100,30`} fill={color} opacity={0.1} />
-      <polyline points={pts.join(" ")} fill="none" stroke={color} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
-    </svg>
-  );
-}
 
 /**
  * Last 7 days' market gain from the stored daily P&L (so deposits don't count), as % of the
@@ -93,41 +79,6 @@ function thisMonth(daily: DailyPnl[]) {
     green: days.filter((d) => d.pnl > 0).length,
     days: days.length,
   };
-}
-
-function StatCard({
-  label,
-  value,
-  color,
-  icon,
-  trend,
-}: {
-  label: string;
-  value: ReactNode;
-  color?: string;
-  icon?: ReactNode;
-  trend?: { series: number[]; pct: number | null; caption?: string };
-}) {
-  const up = (trend?.pct ?? 0) >= 0;
-  return (
-    <Card title={label} icon={icon}>
-      <div className="flex items-end justify-between gap-2">
-        <div className="min-w-0">
-          <p className={`font-figures truncate font-mono text-2xl font-semibold ${color ?? ""}`}>{value}</p>
-          {trend?.pct != null && (
-            <p className="mt-1 text-xs text-[var(--muted)]">
-              <span className={up ? "text-[var(--success)]" : "text-[var(--danger)]"}>
-                {up ? "+" : ""}
-                {trend.pct.toFixed(1)}%
-              </span>{" "}
-              {trend.caption ?? "vs last week"}
-            </p>
-          )}
-        </div>
-        {trend && <Sparkline values={trend.series} up={up} />}
-      </div>
-    </Card>
-  );
 }
 
 export default async function Home() {
@@ -212,16 +163,11 @@ export default async function Home() {
                   <AllocationChart equities={positions.equities} crypto={positions.crypto} cash={totalCash} />
                 </Card>
               {day && (
-                <StatCard
-                  label="Today"
-                  value={signed(day.pnl)}
-                  color={day.pnl >= 0 ? "text-[var(--success)]" : "text-[var(--danger)]"}
-                  icon={<CalendarClock size={15} />}
-                  trend={{
-                series: day.series,
-                pct: day.pct,
-                caption: `stocks ${signed(day.securities)} · crypto ${signed(day.crypto)}`,
-              }}
+                <LiveToday
+                  day={day}
+                  base={posHistory.total[prevCloseIndex(posHistory.at)]}
+                  equities={positions.equities}
+                  crypto={positions.crypto}
                 />
               )}
               </div>

@@ -4,6 +4,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { Card } from "@/components/Card";
 import { PortfolioChart } from "@/components/PortfolioChart";
 import { flowAdjustedPnl, prevCloseIndex, robinhoodToday, splitPnl, stepPnl } from "@/lib/history";
+import { useLiveHistory } from "@/components/LivePrices";
 
 export type PositionHistory = {
   at: string[];
@@ -66,7 +67,7 @@ function RangeTabs({ value, onChange }: { value: RangeKey; onChange: (r: RangeKe
 }
 
 export function PortfolioExplorer({
-  history,
+  history: saved,
   aside,
   tz,
 }: {
@@ -75,6 +76,7 @@ export function PortfolioExplorer({
   tz: string;
 }) {
   const [range, setRange] = useState<RangeKey>("1D");
+  const history = useLiveHistory(saved);
   const data = useMemo(() => sliceRange(history, RANGES.find((r) => r.key === range)!.ms), [history, range]);
   const tabs = <RangeTabs value={range} onChange={setRange} />;
 

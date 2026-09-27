@@ -1,6 +1,16 @@
 export type Hist = { at: string[]; symbols: Record<string, { type?: string; price: (number | null)[] }> };
 
-export const etDay = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+// Reused formatters: toLocaleDateString(..., { timeZone }) builds a fresh Intl formatter per call,
+// and these run for every one of thousands of snapshots — that alone was janking the overview.
+const ET_DAY = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" });
+const ET_TIME = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "numeric", hourCycle: "h23" });
+const dayFormats = new Map<string, Intl.DateTimeFormat>();
+const localDayFormat = (tz: string) => {
+  if (!dayFormats.has(tz)) dayFormats.set(tz, new Intl.DateTimeFormat("en-CA", { timeZone: tz }));
+  return dayFormats.get(tz)!;
+};
+
+export const etDay = (iso: string) => ET_DAY.format(new Date(iso));
 
 /**
  * NYSE calendar (nyse.com/markets/hours-calendars), mirrors backend/app/services/market_hours.ts.
@@ -28,10 +38,7 @@ export function sessionHours(iso: string) {
 export function isRegular(iso: string) {
   const s = sessionHours(iso);
   if (!s) return false;
-  const [h, m] = new Date(iso)
-    .toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "numeric", hourCycle: "h23" })
-    .split(":")
-    .map(Number);
+  const [h, m] = ET_TIME.format(new Date(iso)).split(":").map(Number);
   const minutes = h * 60 + m;
   return minutes >= s.open && minutes <= s.close;
 }
@@ -138,7 +145,8 @@ function cryptoStep(h: FullHist, i: number) {
 
 /** Index of the last snapshot before 12 AM today in `tz` (Robinhood's crypto baseline), or 0. */
 function midnightIndex(at: string[], tz: string) {
-  const localDay = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: tz });
+  const fmt = localDayFormat(tz);
+  const localDay = (iso: string) => fmt.format(new Date(iso));
   const today = localDay(at[at.length - 1]);
   for (let i = at.length - 1; i >= 0; i--) if (localDay(at[i]) < today) return i;
   return 0;

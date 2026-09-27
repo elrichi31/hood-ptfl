@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Modal } from "@heroui/react";
 import { prevCloseFor, priceAgo, priceContext, type Hist } from "@/lib/history";
 import { useLivePrices } from "@/components/LivePrices";
@@ -332,18 +332,31 @@ export function PositionsTable({
   const [openPosition, setOpenPosition] = useState<Position | null>(null);
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "value", desc: true });
   const { prices } = useLivePrices();
+  // Scans the whole snapshot history per row — only redo it when the history or period changes,
+  // never on a live price tick (that re-rendered every second and janked scrolling).
+  const baselines = useMemo(
+    () =>
+      new Map(
+        rows.map((p) => {
+          const { week } = priceContext(history, p.symbol);
+          const prevClose = prevCloseFor(history, p, tz);
+          // 1D: previous session close. Longer: Robinhood daily closes, else (crypto) the snapshot history.
+          const ref =
+            period === "1D"
+              ? prevClose
+              : (references?.[p.symbol]?.[period] ??
+                (period === "YTD" ? null : priceAgo(history, p.symbol, PERIOD_DAYS[period] * 864e5)));
+          return [p.symbol, { week, ref }];
+        })
+      ),
+    [rows, history, period, references, tz]
+  );
   if (!rows.length) return null;
-  rows = rows.map((p) => (prices[p.symbol] ? { ...p, price: prices[p.symbol], value: prices[p.symbol] * p.quantity } : p));
+  const priced = rows.map((p) => (prices[p.symbol] ? { ...p, price: prices[p.symbol], value: prices[p.symbol] * p.quantity } : p));
 
-  const total = rows.reduce((s, p) => s + p.value, 0) || 1;
-  const data = rows.map((p) => {
-    const { week } = priceContext(history, p.symbol);
-    const prevClose = prevCloseFor(history, p, tz);
-    // 1D: previous session close. Longer: Robinhood daily closes, else (crypto) the snapshot history.
-    const ref =
-      period === "1D"
-        ? prevClose
-        : (references?.[p.symbol]?.[period] ?? (period === "YTD" ? null : priceAgo(history, p.symbol, PERIOD_DAYS[period] * 864e5)));
+  const total = priced.reduce((s, p) => s + p.value, 0) || 1;
+  const data = priced.map((p) => {
+    const { week, ref } = baselines.get(p.symbol)!;
     const cost = p.avgCost ? p.avgCost * p.quantity : null;
     const gain = cost != null ? p.value - cost : null;
     return {
