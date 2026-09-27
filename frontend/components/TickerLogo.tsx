@@ -1,21 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Company / coin logo by ticker, all free and keyless:
  * - stocks & ETFs: Parqet's logo CDN (uniform app-icon squares), then FMP's image-stock as backup;
- * - crypto: nvstly/icons via jsDelivr (Parqet resolves "BTC"/"USDC" to unrelated stocks), on a dark tile
- *   because those marks are transparent (XRP's is white);
- * - anything that fails to load falls through to a colored monogram, so a row never shows a broken image.
+ * - crypto: the cryptocurrency-icons npm package on jsDelivr (version-pinned, immutable), then nvstly and
+ *   CoinCap — Parqet resolves "BTC"/"USDC" to unrelated stocks, so crypto never goes there;
+ * - anything that fails falls through to a colored monogram, so a row never shows an empty tile.
  */
-const sources = (symbol: string, crypto: boolean) =>
-  crypto
-    ? [`https://cdn.jsdelivr.net/gh/nvstly/icons@main/crypto_icons/${symbol}.png`]
-    : [
-        `https://assets.parqet.com/logos/symbol/${encodeURIComponent(symbol)}?format=png`,
-        `https://financialmodelingprep.com/image-stock/${encodeURIComponent(symbol)}.png`,
-      ];
+const sources = (symbol: string, crypto: boolean) => {
+  const s = encodeURIComponent(symbol);
+  return crypto
+    ? [
+        `https://cdn.jsdelivr.net/npm/cryptocurrency-icons@0.18.1/128/color/${s.toLowerCase()}.png`,
+        `https://cdn.jsdelivr.net/gh/nvstly/icons@main/crypto_icons/${s}.png`,
+        `https://assets.coincap.io/assets/icons/${s.toLowerCase()}@2x.png`,
+      ]
+    : [`https://assets.parqet.com/logos/symbol/${s}?format=png`, `https://financialmodelingprep.com/image-stock/${s}.png`];
+};
 
 function tickerHue(symbol: string) {
   let hash = 0;
@@ -25,8 +28,16 @@ function tickerHue(symbol: string) {
 
 export function TickerLogo({ symbol, crypto = false, size = 32 }: { symbol: string; crypto?: boolean; size?: number }) {
   const [attempt, setAttempt] = useState(0);
+  const img = useRef<HTMLImageElement>(null);
   const urls = sources(symbol, crypto);
   const box = { width: size, height: size };
+
+  // The server-rendered <img> can fail before React hydrates, and then onError never fires — the
+  // tile would stay empty. Catch that case on mount (and after each source switch).
+  useEffect(() => {
+    const el = img.current;
+    if (el?.complete && el.naturalWidth === 0) setAttempt((a) => a + 1);
+  }, [attempt]);
 
   if (attempt >= urls.length) {
     return (
@@ -43,11 +54,12 @@ export function TickerLogo({ symbol, crypto = false, size = 32 }: { symbol: stri
   return (
     <span
       aria-hidden
-      className={`flex shrink-0 items-center justify-center overflow-hidden rounded-md ${crypto ? "bg-[#1f1f1f] p-[15%]" : "bg-[var(--surface-secondary)]"}`}
+      className={`flex shrink-0 items-center justify-center overflow-hidden rounded-md bg-[var(--surface-secondary)] ${crypto ? "p-[12%]" : ""}`}
       style={box}
     >
       {/* eslint-disable-next-line @next/next/no-img-element -- third-party logo CDNs, tiny images; next/image would need remotePatterns for each */}
       <img
+        ref={img}
         key={urls[attempt]}
         src={urls[attempt]}
         alt=""

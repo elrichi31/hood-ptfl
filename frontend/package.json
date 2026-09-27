@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@heroui/react": "^3.2.6",
+    "@number-flow/react": "^0.6.2",
     "better-auth": "^1.7.5",
     "better-sqlite3": "^12.11.1",
     "framer-motion": "^13.4.0",

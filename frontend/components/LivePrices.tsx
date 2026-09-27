@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { useRouter } from "next/navigation";
 import { CalendarClock } from "lucide-react";
 import { StatCard } from "@/components/StatCard";
+import { LiveNumber } from "@/components/LiveNumber";
 import type { PositionHistory } from "@/components/PortfolioExplorer";
 
 type Live = { prices: Record<string, number>; connected: boolean; at: string | null };
@@ -86,7 +87,7 @@ export function LiveTotal({ total, positions }: { total: number; positions: Pric
 
   return (
     <span className="inline-flex items-center gap-2">
-      {money(total + liveDelta(positions, prices))}
+      <LiveNumber value={total + liveDelta(positions, prices)} />
       {connected && (
         <span
           title="Live prices"
@@ -121,7 +122,7 @@ export function LiveToday({
   return (
     <StatCard
       label="Today"
-      value={signed(pnl)}
+      value={<LiveNumber value={pnl} signed />}
       color={pnl >= 0 ? "text-[var(--success)]" : "text-[var(--danger)]"}
       icon={<CalendarClock size={15} />}
       trend={{

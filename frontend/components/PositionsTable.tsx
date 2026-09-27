@@ -5,6 +5,7 @@ import { Modal } from "@heroui/react";
 import { prevCloseFor, priceAgo, priceContext, type Hist } from "@/lib/history";
 import { useLivePrices } from "@/components/LivePrices";
 import { TickerLogo } from "@/components/TickerLogo";
+import { LiveNumber } from "@/components/LiveNumber";
 
 type Position = {
   symbol: string;
@@ -467,7 +468,9 @@ export function PositionsTable({
                     </div>
                   </div>
                 </td>
-                <td className="font-figures px-3 py-2.5 text-right font-mono">{money(p.price)}</td>
+                <td className="font-figures px-3 py-2.5 text-right font-mono">
+                  <LiveNumber value={p.price} />
+                </td>
                 <td className={`font-figures px-3 py-2.5 text-right font-mono ${tone(today)}`}>
                   {today == null ? (
                     "—"
@@ -486,7 +489,9 @@ export function PositionsTable({
                   <p className="text-xs text-[var(--muted)]">{p.avgCost ? money(p.avgCost) : "—"}</p>
                 </td>
                 <td className="px-3 py-2.5 text-right">
-                  <p className="font-figures font-mono font-medium">{money(p.value)}</p>
+                  <p className="font-figures font-mono font-medium">
+                    <LiveNumber value={p.value} />
+                  </p>
                   <div className="mt-1 ml-auto flex w-28 items-center gap-1.5">
                     <div className="h-1 flex-1 overflow-hidden rounded-full bg-[var(--surface-secondary)]">
                       <div className="h-full rounded-full bg-[var(--accent)]" style={{ width: `${weight}%` }} />
