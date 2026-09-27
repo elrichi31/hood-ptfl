@@ -213,7 +213,7 @@ export default async function Home() {
             <PositionsTable rows={positions.equities} history={posHistory} references={references} tz={tz} enrichable />
           </Card>
           <Card title="Crypto">
-            <PositionsTable rows={positions.crypto} history={posHistory} references={references} tz={tz} />
+            <PositionsTable rows={positions.crypto} history={posHistory} references={references} tz={tz} crypto />
           </Card>
         </div>
       </main>

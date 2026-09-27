@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Modal } from "@heroui/react";
 import { prevCloseFor, priceAgo, priceContext, type Hist } from "@/lib/history";
 import { useLivePrices } from "@/components/LivePrices";
+import { TickerLogo } from "@/components/TickerLogo";
 
 type Position = {
   symbol: string;
@@ -37,11 +38,6 @@ const compact = (n: number) =>
   n.toLocaleString("en-US", { notation: "compact", maximumFractionDigits: 1 });
 
 // Deterministic pastel-ish hue per ticker, Notion-tag style.
-function tickerHue(symbol: string) {
-  let hash = 0;
-  for (const ch of symbol) hash = (hash * 31 + ch.charCodeAt(0)) % 360;
-  return hash;
-}
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 
@@ -316,12 +312,15 @@ function Th({
 export function PositionsTable({
   rows,
   enrichable,
+  crypto = false,
   history,
   references,
   tz,
 }: {
   rows: Position[];
   enrichable?: boolean;
+  /** Crypto rows: coin logos instead of company logos. */
+  crypto?: boolean;
   history?: Hist;
   /** Viewer's IANA zone: crypto's "today" starts at their midnight. */
   tz: string;
@@ -461,12 +460,7 @@ export function PositionsTable({
               >
                 <td className="py-2.5 pr-3">
                   <div className="flex items-center gap-2.5">
-                    <span
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[11px] font-semibold text-white"
-                      style={{ background: `oklch(0.55 0.12 ${tickerHue(p.symbol)})` }}
-                    >
-                      {p.symbol.slice(0, 2)}
-                    </span>
+                    <TickerLogo symbol={p.symbol} crypto={crypto} />
                     <div className="min-w-0">
                       <p className="font-medium">{p.symbol}</p>
                       {p.name && <p className="max-w-[180px] truncate text-xs text-[var(--muted)]">{p.name}</p>}

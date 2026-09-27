@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { applyTrades, portfolioMetrics, type SimHolding, type Trade } from "@/lib/portfolioMath";
+import { TickerLogo } from "@/components/TickerLogo";
 
 type Extra = Record<string, { sector: string | null; returns: number[] }>;
 
@@ -18,6 +19,7 @@ export function RiskSimulator({ holdings, cash, market }: { holdings: SimHolding
   const [extra, setExtra] = useState<Extra>({});
   const [lookup, setLookup] = useState<Record<string, "loading" | string>>({});
   const held = new Set(holdings.map((h) => h.symbol));
+  const cryptoSymbols = new Set(holdings.filter((h) => h.type === "crypto").map((h) => h.symbol));
 
   const before = useMemo(() => portfolioMetrics(holdings, cash, market), [holdings, cash, market]);
   const sim = useMemo(() => applyTrades(holdings, cash, trades, extra), [holdings, cash, trades, extra]);
@@ -214,7 +216,10 @@ export function RiskSimulator({ holdings, cash, market }: { holdings: SimHolding
               const was = before.risk.find((x) => x.symbol === r.symbol)?.riskPct ?? 0;
               return (
                 <p key={r.symbol} className="font-figures flex justify-between font-mono text-xs">
-                  <span className="font-sans">{r.symbol}</span>
+                  <span className="inline-flex items-center gap-1.5 font-sans">
+                    <TickerLogo symbol={r.symbol} crypto={cryptoSymbols.has(r.symbol)} size={14} />
+                    {r.symbol}
+                  </span>
                   <span>
                     <span className="text-[var(--muted)]">{was.toFixed(1)}% →</span> {r.riskPct.toFixed(1)}%
                   </span>

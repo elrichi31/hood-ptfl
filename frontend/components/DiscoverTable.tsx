@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useState } from "react";
+import { TickerLogo } from "@/components/TickerLogo";
 
 export type Source = "watchlist" | "peer" | "diversifier";
 
@@ -350,14 +351,7 @@ export function DiscoverTable({ items, portfolio }: { items: DiscoverItem[]; por
                 >
                   <td className="py-2.5 pr-3 pl-1">
                     <div className="flex items-center gap-2.5">
-                      {i.logo ? (
-                        // eslint-disable-next-line @next/next/no-img-element -- tiny third-party logos, not worth next/image remotePatterns
-                        <img src={i.logo} alt="" width={24} height={24} className="h-6 w-6 shrink-0 rounded bg-white object-contain" loading="lazy" />
-                      ) : (
-                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-[var(--surface-secondary)] text-[9px] font-semibold text-[var(--muted)]">
-                          {i.kind === "fund" ? "ETF" : i.symbol.slice(0, 2)}
-                        </span>
-                      )}
+                      <TickerLogo symbol={i.symbol} size={28} />
                       <div className="min-w-0">
                         <p className="truncate">
                           <a

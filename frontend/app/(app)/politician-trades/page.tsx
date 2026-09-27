@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { backend } from "@/lib/backend";
+import { TickerLogo } from "@/components/TickerLogo";
 
 
 type Trade = {
@@ -49,10 +50,11 @@ export default async function PoliticianTrades() {
                 </p>
               </div>
               <div className="text-right">
-                <p>
+                <p className="flex items-center justify-end gap-2">
                   <span className={t.transaction_type === "BUY" ? "text-[var(--success)]" : "text-[var(--danger)]"}>
                     {t.transaction_type}
-                  </span>{" "}
+                  </span>
+                  <TickerLogo symbol={t.symbol} size={18} />
                   <span className="font-medium">{t.symbol}</span>
                 </p>
                 <p className="text-xs text-[var(--muted)]">

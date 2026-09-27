@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { auth } from "@/lib/auth";
 import { backend } from "@/lib/backend";
 import { Card } from "@/components/Card";
+import { TickerLogo } from "@/components/TickerLogo";
 import { ProjectionChart, type Band } from "@/components/ProjectionChart";
 import { RiskSimulator } from "@/components/RiskSimulator";
 
@@ -171,7 +172,18 @@ export default async function RiskPage() {
           <div className="mt-3 flex flex-col gap-2.5">
             {byRisk.map((p) => (
               <div key={p.symbol} className="flex flex-col gap-1">
-                <Bar label={p.symbol} pct={(p.weightPct / maxShare) * 100} right={`${p.weightPct}%`} color="var(--muted)" title="Share of money" />
+                <Bar
+                  label={
+                    <span className="inline-flex items-center gap-2">
+                      <TickerLogo symbol={p.symbol} crypto={p.type === "crypto"} size={18} />
+                      {p.symbol}
+                    </span>
+                  }
+                  pct={(p.weightPct / maxShare) * 100}
+                  right={`${p.weightPct}%`}
+                  color="var(--muted)"
+                  title="Share of money"
+                />
                 <Bar label="" pct={(p.riskPct! / maxShare) * 100} right={`${p.riskPct}%`} title="Share of portfolio volatility it causes" />
               </div>
             ))}
@@ -379,7 +391,12 @@ export default async function RiskPage() {
                         {shortDate(e.date, false)}{" "}
                         <span className="text-xs text-[var(--muted)]">{e.timing === "pm" ? "after close" : e.timing === "am" ? "before open" : ""}</span>
                       </td>
-                      <td className="py-2 font-medium">{e.symbol}</td>
+                      <td className="py-2 font-medium">
+                        <span className="inline-flex items-center gap-2">
+                          <TickerLogo symbol={e.symbol} size={20} />
+                          {e.symbol}
+                        </span>
+                      </td>
                       <td className="font-figures py-2 text-right font-mono">{e.weightPct}%</td>
                       <td className="font-figures py-2 text-right font-mono">±{e.avgMovePct}%</td>
                       <td className="font-figures py-2 text-right font-mono text-[var(--muted)]">±{e.maxMovePct}%</td>
@@ -449,7 +466,10 @@ export default async function RiskPage() {
                   return (
                     <tr key={p.symbol} className="border-t border-[var(--border)]">
                       <td className="py-2">
-                        <span className="font-medium">{p.symbol}</span>{" "}
+                        <span className="inline-flex items-center gap-2 align-middle">
+                          <TickerLogo symbol={p.symbol} crypto={p.type === "crypto"} size={20} />
+                          <span className="font-medium">{p.symbol}</span>
+                        </span>{" "}
                         <span className="text-xs text-[var(--muted)]">{p.sector ?? ""}</span>
                       </td>
                       <td className="font-figures py-2 text-right font-mono">{p.weightPct}%</td>

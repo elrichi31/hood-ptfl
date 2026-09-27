@@ -1,4 +1,5 @@
 import { Card } from "@/components/Card";
+import { TickerLogo } from "@/components/TickerLogo";
 import { compactUsd, edgarForm4, type InsiderActivity } from "@/lib/insiders";
 
 const shortDate = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -23,8 +24,14 @@ export function InsiderTrades({ data }: { data: InsiderActivity }) {
       <Card title="By holding">
         <div className="flex flex-col gap-2.5">
           {summary.map((s) => (
-            <div key={s.symbol} className="grid grid-cols-[3.5rem_1fr_1fr_6.5rem] items-center gap-3 text-sm">
-              <a href={edgarForm4(s.symbol)} target="_blank" rel="noopener noreferrer" className="font-medium hover:underline">
+            <div key={s.symbol} className="grid grid-cols-[5rem_1fr_1fr_6.5rem] items-center gap-3 text-sm">
+              <a
+                href={edgarForm4(s.symbol)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 font-medium hover:underline"
+              >
+                <TickerLogo symbol={s.symbol} size={18} />
                 {s.symbol}
               </a>
               {/* Mirrored bars: sold grows left, bought grows right, same $ scale across holdings. */}
@@ -57,7 +64,10 @@ export function InsiderTrades({ data }: { data: InsiderActivity }) {
               rel="noopener noreferrer"
               className={`flex items-baseline gap-3 border-b border-[var(--border)] py-2.5 text-sm last:border-0 hover:text-[var(--accent)] ${t.side === "buy" ? "font-medium" : ""}`}
             >
-              <span className="w-14 shrink-0 font-medium">{t.symbol}</span>
+              <span className="flex w-20 shrink-0 items-center gap-2 self-center font-medium">
+                <TickerLogo symbol={t.symbol} size={18} />
+                {t.symbol}
+              </span>
               <span className={`w-9 shrink-0 text-xs ${t.side === "buy" ? "text-[var(--success)]" : "text-[var(--danger)]"}`}>
                 {t.side === "buy" ? "Buy" : "Sell"}
               </span>

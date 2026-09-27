@@ -1,3 +1,5 @@
+import { TickerLogo } from "@/components/TickerLogo";
+
 type Position = { symbol: string; quantity: number; avgCost: number | null; price: number; value: number };
 
 const pct = (n: number) =>
@@ -70,7 +72,11 @@ export function AllocationChart({
           {c.top.length > 0 && (
             <div className="mt-1.5 flex flex-wrap gap-1 pl-[18px]">
               {c.top.map((p) => (
-                <span key={p.symbol} className="rounded-full bg-[var(--surface-secondary)] px-2 py-0.5 text-xs">
+                <span
+                  key={p.symbol}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-[var(--surface-secondary)] py-0.5 pr-2 pl-0.5 text-xs"
+                >
+                  <TickerLogo symbol={p.symbol} crypto={c.label === "Crypto"} size={16} />
                   {p.symbol}{" "}
                   <span className="font-figures font-mono text-[var(--muted)]">
                     {((p.value / total) * 100).toFixed(1)}%
@@ -98,7 +104,17 @@ export function AllocationChart({
 
 type Mover = { symbol: string; returnPct: number; gain: number; avgCost: number; price: number };
 
-function MoversList({ title, rows, color }: { title: string; rows: Mover[]; color: string }) {
+function MoversList({
+  title,
+  rows,
+  color,
+  cryptoSymbols,
+}: {
+  title: string;
+  rows: Mover[];
+  color: string;
+  cryptoSymbols: Set<string>;
+}) {
   if (!rows.length) return null;
   const max = Math.max(...rows.map((r) => Math.abs(r.returnPct)), 1);
   const total = rows.reduce((s, r) => s + r.gain, 0);
@@ -114,7 +130,10 @@ function MoversList({ title, rows, color }: { title: string; rows: Mover[]; colo
         {rows.map((r) => (
           <div key={r.symbol}>
             <div className="flex items-center gap-3">
-              <span className="w-14 shrink-0 text-sm font-medium">{r.symbol}</span>
+              <span className="flex w-20 shrink-0 items-center gap-2 text-sm font-medium">
+                <TickerLogo symbol={r.symbol} crypto={cryptoSymbols.has(r.symbol)} size={18} />
+                {r.symbol}
+              </span>
               <div className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--surface-secondary)]">
                 <div
                   className="h-full rounded-full"
@@ -157,10 +176,11 @@ export function TopMoversChart({ equities, crypto }: { equities: Position[]; cry
     .reverse();
 
   if (!gainers.length && !losers.length) return null;
+  const cryptoSymbols = new Set(crypto.map((p) => p.symbol));
   return (
     <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-      <MoversList title="Gainers" rows={gainers} color="var(--success)" />
-      <MoversList title="Losers" rows={losers} color="var(--danger)" />
+      <MoversList title="Gainers" rows={gainers} color="var(--success)" cryptoSymbols={cryptoSymbols} />
+      <MoversList title="Losers" rows={losers} color="var(--danger)" cryptoSymbols={cryptoSymbols} />
     </div>
   );
 }
