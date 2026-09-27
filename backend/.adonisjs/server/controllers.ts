@@ -4,6 +4,7 @@
  */
 
 export const controllers = {
+  Discover: () => import('#controllers/discover_controller'),
   History: () => import('#controllers/history_controller'),
   Live: () => import('#controllers/live_controller'),
   News: () => import('#controllers/news_controller'),

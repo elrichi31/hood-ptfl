@@ -28,6 +28,7 @@ router
     router.get('usage', [controllers.Usage, 'index'])
     router.get('risk', [controllers.Risk, 'index'])
     router.get('live', [controllers.Live, 'stream'])
+    router.get('discover', [controllers.Discover, 'index'])
   })
   .prefix('/api/v1')
   .use(middleware.internalToken())
