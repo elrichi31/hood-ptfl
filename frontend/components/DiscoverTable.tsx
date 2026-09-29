@@ -343,14 +343,14 @@ export function DiscoverTable({ items, portfolio }: { items: DiscoverItem[]; por
         </label>
       </div>
       <div className="h-[640px] overflow-auto rounded-md border border-[var(--border)]">
-        <table className="w-full min-w-[1240px] text-sm">
+        <table className="w-full min-w-[1080px] text-sm">
           <thead className="sticky top-0 z-10 bg-[var(--surface)] shadow-[0_1px_0_var(--border)]">
             <tr className="text-left text-xs text-[var(--muted)]">
               <th className="py-2.5 pl-3 font-normal">
                 <HeadLabel icon={Building2}>Company</HeadLabel>
               </th>
               {COLUMNS.map((c) => (
-                <th key={c.key} className="py-2.5 pl-6 text-right font-normal whitespace-nowrap" title={c.title}>
+                <th key={c.key} className="py-2.5 pl-4 text-right font-normal whitespace-nowrap" title={c.title}>
                   <button
                     type="button"
                     onClick={() => (setSort((s) => ({ key: c.key, desc: s.key === c.key ? !s.desc : !c.asc })), setPage(0))}
@@ -361,7 +361,7 @@ export function DiscoverTable({ items, portfolio }: { items: DiscoverItem[]; por
                   </button>
                 </th>
               ))}
-              <th className="py-2.5 pr-3 pl-6 text-right font-normal">
+              <th className="py-2.5 pr-3 pl-4 text-right font-normal">
                 <HeadLabel icon={DollarSign}>Price</HeadLabel>
               </th>
             </tr>
@@ -416,30 +416,30 @@ export function DiscoverTable({ items, portfolio }: { items: DiscoverItem[]; por
                       </div>
                     </div>
                   </td>
-                  <td className="font-figures py-2.5 pl-6 text-right font-mono whitespace-nowrap font-semibold">{i.score}</td>
-                  <td className="font-figures py-2.5 pl-6 text-right font-mono whitespace-nowrap">{i.opportunity}</td>
+                  <td className="font-figures py-2.5 pl-4 text-right font-mono whitespace-nowrap font-semibold">{i.score}</td>
+                  <td className="font-figures py-2.5 pl-4 text-right font-mono whitespace-nowrap">{i.opportunity}</td>
                   <td
-                    className="font-figures py-2.5 pl-6 text-right font-mono whitespace-nowrap"
+                    className="font-figures py-2.5 pl-4 text-right font-mono whitespace-nowrap"
                     title={i.sectorPct !== null && i.sector ? `You already have ${i.sectorPct.toFixed(1)}% in ${i.sector}` : undefined}
                   >
                     {i.portfolioFit}
                   </td>
                   <td
-                    className={`font-figures py-2.5 pl-6 text-right font-mono whitespace-nowrap text-xs ${i.fit ? (i.fit.deltaVolAt5 <= 0 ? "text-[var(--success)]" : "text-[var(--danger)]") : "text-[var(--muted)]"}`}
+                    className={`font-figures py-2.5 pl-4 text-right font-mono whitespace-nowrap text-xs ${i.fit ? (i.fit.deltaVolAt5 <= 0 ? "text-[var(--success)]" : "text-[var(--danger)]") : "text-[var(--muted)]"}`}
                     title={i.fit ? `Correlation with your portfolio ${i.fit.corr.toFixed(2)}` : "Not enough history"}
                   >
                     {i.fit && portfolio
                       ? `${portfolio.volatilityPct.toFixed(1)} → ${(portfolio.volatilityPct + i.fit.deltaVolAt5).toFixed(1)}%`
                       : "—"}
                   </td>
-                  <td className="py-2.5 pl-6 text-right text-xs">
+                  <td className="py-2.5 pl-4 text-right text-xs">
                     {i.analysts ? <AnalystBar a={i.analysts} /> : <span className="text-[var(--muted)]">—</span>}
                   </td>
-                  <td className={`font-figures py-2.5 pl-6 text-right font-mono whitespace-nowrap ${tone(i.target?.upsidePct ?? null)}`}>{pct(i.target?.upsidePct ?? null, true)}</td>
-                  <td className={`font-figures py-2.5 pl-6 text-right font-mono whitespace-nowrap ${tone(i.revenueGrowth)}`}>{pct(i.revenueGrowth, true)}</td>
-                  <td className="font-figures py-2.5 pl-6 text-right font-mono whitespace-nowrap">{i.pe === null || i.pe <= 0 ? "—" : i.pe.toFixed(1)}</td>
-                  <td className={`font-figures py-2.5 pl-6 text-right font-mono whitespace-nowrap ${tone(i.return52w)}`}>{pct(i.return52w, true)}</td>
-                  <td className="py-2.5 pr-3 pl-6 text-right">
+                  <td className={`font-figures py-2.5 pl-4 text-right font-mono whitespace-nowrap ${tone(i.target?.upsidePct ?? null)}`}>{pct(i.target?.upsidePct ?? null, true)}</td>
+                  <td className={`font-figures py-2.5 pl-4 text-right font-mono whitespace-nowrap ${tone(i.revenueGrowth)}`}>{pct(i.revenueGrowth, true)}</td>
+                  <td className="font-figures py-2.5 pl-4 text-right font-mono whitespace-nowrap">{i.pe === null || i.pe <= 0 ? "—" : i.pe.toFixed(1)}</td>
+                  <td className={`font-figures py-2.5 pl-4 text-right font-mono whitespace-nowrap ${tone(i.return52w)}`}>{pct(i.return52w, true)}</td>
+                  <td className="py-2.5 pr-3 pl-4 text-right">
                     <p className="font-figures font-mono">{i.price === null ? "—" : `$${i.price.toFixed(2)}`}</p>
                     <p className={`font-figures font-mono text-xs ${tone(i.changePct)}`}>{pct(i.changePct, true, 2)}</p>
                   </td>

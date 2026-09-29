@@ -21,7 +21,7 @@ export default async function DiscoverPage() {
   const diversifiers = d.items.filter((i) => i.fit && i.fit.deltaVolAt5 < 0).length;
 
   return (
-    <main className="mx-auto w-full max-w-[1280px] flex-1 px-4 pt-6 pb-24">
+    <main className="w-full flex-1 px-4 pt-6 pb-24">
       <h1 className="text-2xl font-semibold tracking-tight">Discover</h1>
       <p className="mt-1 text-sm text-[var(--muted)]">
         Stocks and ETFs from your watchlists, peers of what you hold, and popular names that would diversify you, each scored on
