@@ -1,7 +1,7 @@
 import { test } from '@japa/runner'
 import { fitOf, scoreItem, type DiscoverItem } from '#services/discover'
 
-const base: Omit<DiscoverItem, 'score'> = {
+const base: Omit<DiscoverItem, 'opportunity' | 'portfolioFit' | 'score'> = {
   symbol: 'X',
   name: 'X',
   description: null,
@@ -27,25 +27,26 @@ const base: Omit<DiscoverItem, 'score'> = {
   earnings: null,
   mspr: null,
   fit: null,
+  sectorPct: null,
+  nextEarnings: null,
   spark: [],
 }
 const analysts = (buyPct: number) => ({ total: 10, buyPct, buy: 0, hold: 0, sell: 0 })
-const fit = (corr: number) => ({
-  corr,
-  beta: 1,
+const fit = (deltaVolAt5: number, beta = 1) => ({
+  corr: 0,
+  beta,
   volatilityPct: 20,
   sigma: 0.01,
   cov: 0,
-  deltaVolAt5: 0,
+  deltaVolAt5,
 })
 
-test('score rewards fit, conviction, upside, growth, margin and track record, bounded 0–100', ({
-  assert,
-}) => {
+test('score splits into opportunity and portfolio fit, bounded 0–100', ({ assert }) => {
   const best = scoreItem({
     ...base,
-    fit: fit(-0.2),
-    analysts: analysts(1),
+    fit: fit(-2, 0),
+    sectorPct: 0,
+    analysts: { ...analysts(1), total: 1e6 },
     target: { low: 1, mean: 2, high: 3, upsidePct: 50 },
     revenueGrowth: 80,
     netMargin: 40,
@@ -53,20 +54,28 @@ test('score rewards fit, conviction, upside, growth, margin and track record, bo
   })
   const worst = scoreItem({
     ...base,
-    fit: fit(1),
-    analysts: analysts(0),
+    fit: fit(1, 2),
+    sectorPct: 40,
+    analysts: { ...analysts(0), total: 1e6 },
     target: { low: 1, mean: 1, high: 1, upsidePct: -20 },
     revenueGrowth: -50,
     netMargin: -30,
     earnings: { quarters: 4, beats: 0, avgSurprisePct: -10 },
   })
-  assert.equal(best, 100)
-  assert.equal(worst, 0)
-  const unknown = scoreItem(base) // missing data scores neutral, not zero
-  assert.isAbove(unknown, worst)
-  assert.isBelow(unknown, best)
-  // A diversifier beats an identical twin that moves with the portfolio.
-  assert.isAbove(scoreItem({ ...base, fit: fit(0.1) }), scoreItem({ ...base, fit: fit(0.9) }))
+  assert.deepEqual(best, { opportunity: 100, portfolioFit: 100, score: 100 })
+  assert.deepEqual(worst, { opportunity: 0, portfolioFit: 0, score: 0 })
+  const unknown = scoreItem(base).score // missing data scores neutral, not zero
+  assert.isAbove(unknown, 0)
+  assert.isBelow(unknown, 100)
+  // A diversifier beats an identical twin that raises your volatility.
+  assert.isAbove(scoreItem({ ...base, fit: fit(-1) }).score, scoreItem({ ...base, fit: fit(0.5) }).score)
+  // Same stock, but you're already 22% in its sector: worse fit.
+  assert.isAbove(scoreItem({ ...base, sectorPct: 0 }).portfolioFit, scoreItem({ ...base, sectorPct: 22 }).portfolioFit)
+  // 3 analysts at 100% Buy count for less than 40 at 95%.
+  assert.isBelow(
+    scoreItem({ ...base, analysts: { ...analysts(1), total: 3 } }).opportunity,
+    scoreItem({ ...base, analysts: { ...analysts(0.95), total: 40 } }).opportunity
+  )
 })
 
 test('fitOf: a hedge lowers portfolio volatility, a clone raises it', ({ assert }) => {

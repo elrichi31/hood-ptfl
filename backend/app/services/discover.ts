@@ -5,7 +5,7 @@ import { trackedFetch } from '#services/api_usage'
 import { callTool } from '#services/robinhood'
 import { json } from '#services/portfolio'
 import { getDailyBars, getFundamentals, numOrNull } from '#services/enrichment'
-import { getRisk, returnsOnCalendar } from '#services/risk'
+import { getRisk, nextEarnings, returnsOnCalendar } from '#services/risk'
 
 /**
  * Discover: stocks and funds you don't own, from three sources — your own Robinhood watchlists, Finnhub
@@ -61,10 +61,20 @@ export type DiscoverItem = {
   earnings: { quarters: number; beats: number; avgSurprisePct: number } | null
   mspr: number | null
   fit: Fit | null
+  /** Share of your portfolio already in this candidate's (Robinhood) sector, %. */
+  sectorPct: number | null
+  /** Next report within 30 days, with its typical earnings-day move — reused from Risk's event risk. */
+  nextEarnings: Awaited<ReturnType<typeof nextEarnings>>
   /** Weekly closes over the last year, indexed to 100 — same days as `portfolio.spark`. */
   spark: number[]
+  /** How attractive the stock looks on its own, 0–100. */
+  opportunity: number
+  /** How well it complements what you already hold, 0–100. */
+  portfolioFit: number
   score: number
 }
+
+type Scores = 'opportunity' | 'portfolioFit' | 'score'
 
 export type PortfolioContext = {
   total: number
@@ -148,19 +158,32 @@ export function fitOf(
   }
 }
 
+/** Pulls a ratio toward neutral 0.5 when few analysts cover it: 3 at 100% ≠ 40 at 95%. */
+const shrink = (x: number, n: number) => 0.5 + (x - 0.5) * (n / (n + 5))
+
 /**
- * 0–100 blend: portfolio fit 25 (low correlation), analyst conviction 25, upside to target 10, growth 15,
- * margin 10, earnings track record 15. Missing inputs score neutral, so funds (no analysts/earnings)
- * compete on fit. ponytail: hand-weighted — the UI re-sorts by any single column if this feels off.
+ * Opportunity (the stock on its own): analyst conviction 30 and upside 15 (both shrunk by coverage),
+ * growth 20, margin 15, earnings track record 20. 1Y return is deliberately left out — momentum and
+ * priced-in expectations look the same. Portfolio Fit (next to what you hold): volatility change at 5%
+ * 50, sector crowding 35 (0% of you in that sector = full marks, ≥25% = none — so a low-correlation
+ * semiconductor still loses points when you're already heavy in chips), beta 15.
+ * Missing inputs score neutral. ponytail: hand-weighted, backtest before trusting the decimals.
  */
-export function scoreItem(i: Omit<DiscoverItem, 'score'>) {
-  const fit = i.fit ? clamp(1 - i.fit.corr, 0, 1) : 0.5
-  const analyst = i.analysts ? i.analysts.buyPct : 0.5
-  const upside = i.target ? clamp(i.target.upsidePct / 30, 0, 1) : 0.5
+export function scoreItem(i: Omit<DiscoverItem, Scores>): Pick<DiscoverItem, Scores> {
+  const n = i.analysts?.total ?? 0
+  const analyst = i.analysts ? shrink(i.analysts.buyPct, n) : 0.5
+  const upside = i.target ? shrink(clamp(i.target.upsidePct / 30, 0, 1), n) : 0.5
   const growth = i.revenueGrowth === null ? 0.5 : clamp((i.revenueGrowth + 10) / 50, 0, 1) // -10%..40%
   const margin = i.netMargin === null ? 0.5 : clamp(i.netMargin / 25, 0, 1) // 0..25%
   const track = i.earnings ? i.earnings.beats / i.earnings.quarters : 0.5
-  return Math.round(fit * 25 + analyst * 25 + upside * 10 + growth * 15 + margin * 10 + track * 15)
+  const opportunity = Math.round(analyst * 30 + upside * 15 + growth * 20 + margin * 15 + track * 20)
+
+  const vol = i.fit ? clamp((0.5 - i.fit.deltaVolAt5) / 1.5, 0, 1) : 0.5 // +0.5pp..-1pp
+  const crowd = i.sectorPct === null ? 0.5 : 1 - clamp(i.sectorPct / 25, 0, 1)
+  const beta = i.fit ? clamp(1 - i.fit.beta / 2, 0, 1) : 0.5 // β 0 = full, β 2 = none
+  const portfolioFit = Math.round(vol * 50 + crowd * 35 + beta * 15)
+
+  return { opportunity, portfolioFit, score: Math.round(opportunity * 0.55 + portfolioFit * 0.45) }
 }
 
 /** Every stock/ETF symbol on the user's own watchlists (not options), with the list names it's on. */
@@ -264,6 +287,7 @@ async function build(): Promise<State> {
     let level = 100
     return r.flatMap((x, i) => ((level *= 1 + (x ?? 0)), weekly(i) ? [round(level, 1)!] : []))
   }
+  const sectorPct = new Map(risk.sectors.map((x) => [x.sector, x.pct ?? 0]))
   const items: DiscoverItem[] = []
   for (const symbol of [...new Set([...watchlist, ...peers, ...diversifiers])]) {
     const f = fundamentals.get(symbol)
@@ -300,7 +324,7 @@ async function build(): Promise<State> {
     if (peerOf.has(symbol)) sources.push('peer')
     if (diversifiers.includes(symbol)) sources.push('diversifier')
 
-    const base: Omit<DiscoverItem, 'score'> = {
+    const base: Omit<DiscoverItem, Scores> = {
       symbol,
       name: profile?.name ?? symbol,
       description: f?.description ?? null,
@@ -350,9 +374,11 @@ async function build(): Promise<State> {
         : null,
       mspr: months.length ? round(mean(months.map((x: any) => x.mspr)), 1) : null,
       fit: fits.get(symbol) ?? null,
+      sectorPct: f?.sector ? (sectorPct.get(f.sector) ?? 0) : null,
+      nextEarnings: fund ? null : await nextEarnings(symbol, barsOf, 30).catch(() => null),
       spark: spark(barsOf),
     }
-    items.push({ ...base, score: scoreItem(base) })
+    items.push({ ...base, ...scoreItem(base) })
   }
 
   let level = 100

@@ -31,7 +31,11 @@ export type DiscoverItem = {
   earnings: { quarters: number; beats: number; avgSurprisePct: number } | null;
   mspr: number | null;
   fit: { corr: number; beta: number; volatilityPct: number; sigma: number; cov: number; deltaVolAt5: number } | null;
+  sectorPct: number | null;
+  nextEarnings: { date: string; timing: "am" | "pm" | null; avgMovePct: number; maxMovePct: number; reports: number } | null;
   spark: number[];
+  opportunity: number;
+  portfolioFit: number;
   score: number;
 };
 
@@ -44,15 +48,17 @@ export type PortfolioContext = {
   spark: number[];
 };
 
-type Key = "score" | "fit" | "analysts" | "upside" | "revenueGrowth" | "pe" | "return52w";
+type Key = "score" | "opportunity" | "portfolioFit" | "fit" | "analysts" | "upside" | "revenueGrowth" | "pe" | "return52w";
 const COLUMNS: { key: Key; label: string; title: string; asc?: boolean }[] = [
-  { key: "score", label: "Score", title: "Blend of portfolio fit, analyst conviction, upside, growth, margin and earnings track record" },
-  { key: "fit", label: "Fit", title: "Change in your portfolio's volatility if this became 5% of it (negative = it diversifies you)", asc: true },
-  { key: "analysts", label: "Analysts", title: "Share of analysts rating it Buy" },
+  { key: "score", label: "Score", title: "55% Opportunity + 45% Portfolio fit" },
+  { key: "opportunity", label: "Opportunity", title: "The stock on its own: analyst conviction and upside (discounted when few analysts cover it), revenue growth, margin, earnings beats" },
+  { key: "portfolioFit", label: "Fit", title: "Next to what you hold: how much it lowers your volatility, how crowded its sector already is in your portfolio, and its beta" },
+  { key: "fit", label: "Volatility at 5%", title: "Your portfolio's annual volatility now → if this became 5% of it", asc: true },
+  { key: "analysts", label: "Analysts", title: "Share of analysts rating it Buy, and how many cover it" },
   { key: "upside", label: "Upside", title: "Distance to the analysts' mean price target" },
   { key: "revenueGrowth", label: "Rev. growth", title: "Revenue growth, trailing 12 months vs the year before" },
   { key: "pe", label: "P/E", title: "Price / earnings, trailing 12 months (lower is cheaper)", asc: true },
-  { key: "return52w", label: "52w", title: "Price return over the last 52 weeks" },
+  { key: "return52w", label: "1Y return", title: "Price return over the last year. Not part of the score: big run-ups can mean momentum or expectations already priced in" },
 ];
 const SOURCES: { key: Source | "all"; label: string }[] = [
   { key: "all", label: "All" },
@@ -79,6 +85,7 @@ const tone = (n: number | null) => (n === null ? "" : n >= 0 ? "text-[var(--succ
 const money = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 const cap = (m: number | null) =>
   m === null ? null : m >= 1e6 ? `$${(m / 1e6).toFixed(1)}T` : m >= 1e3 ? `$${(m / 1e3).toFixed(0)}B` : `$${m.toFixed(0)}M`;
+const daysUntil = (date: string) => Math.round((new Date(date + "T12:00:00").getTime() - Date.now()) / 864e5);
 const SOURCE_LABEL: Record<Source, string> = { watchlist: "Watchlist", peer: "Peer", diversifier: "Diversifier" };
 
 /** Buy / hold / sell as one stacked bar, same language as the symbol modal's ratings bar. */
@@ -96,6 +103,7 @@ function AnalystBar({ a }: { a: NonNullable<DiscoverItem["analysts"]> }) {
         ))}
       </span>
       <span className="font-figures w-9 text-right font-mono">{Math.round(a.buyPct * 100)}%</span>
+      <span className="font-figures w-8 text-left font-mono text-[10px] text-[var(--muted)]">n={a.total}</span>
     </div>
   );
 }
@@ -260,6 +268,13 @@ function Detail({ i, p }: { i: DiscoverItem; p: PortfolioContext | null }) {
               </span>
             </span>
           )}
+          {i.nextEarnings && (
+            <span className="col-span-2 text-[var(--danger)]">
+              Reports {i.nextEarnings.date}
+              {i.nextEarnings.timing === "am" ? " before open" : i.nextEarnings.timing === "pm" ? " after close" : ""} · typically moves ±
+              {i.nextEarnings.avgMovePct}% (worst {i.nextEarnings.maxMovePct}%)
+            </span>
+          )}
           {msprText && <span className="col-span-2 text-[var(--muted)]">Last 3 months: {msprText}</span>}
           <span className="text-[var(--muted)]">Market cap</span>
           <span className="font-figures text-right font-mono">{cap(i.marketCap) ?? "—"}</span>
@@ -322,7 +337,7 @@ export function DiscoverTable({ items, portfolio }: { items: DiscoverItem[]; por
         </label>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[900px] text-sm">
+        <table className="w-full min-w-[1080px] text-sm">
           <thead>
             <tr className="text-left text-xs text-[var(--muted)]">
               <th className="pb-2 font-normal">Company</th>
@@ -371,6 +386,14 @@ export function DiscoverTable({ items, portfolio }: { items: DiscoverItem[]; por
                               {s === "watchlist" && i.watchlists.length ? `On ${i.watchlists[0]}` : SOURCE_LABEL[s]}
                             </span>
                           ))}
+                          {i.nextEarnings && daysUntil(i.nextEarnings.date) <= 14 && (
+                            <span
+                              className="rounded bg-[var(--surface-secondary)] px-1 py-px text-[10px] text-[var(--danger)]"
+                              title={`Typical earnings-day move ±${i.nextEarnings.avgMovePct}%, worst ${i.nextEarnings.maxMovePct}% (last ${i.nextEarnings.reports} reports)`}
+                            >
+                              ⚠ Earnings {daysUntil(i.nextEarnings.date) <= 0 ? "today" : `in ${daysUntil(i.nextEarnings.date)}d`} · ±{i.nextEarnings.avgMovePct}%
+                            </span>
+                          )}
                           {i.newIndustry && (
                             <span className="rounded bg-[var(--accent-soft)] px-1 py-px text-[10px] text-[var(--accent)]">New industry</span>
                           )}
@@ -384,11 +407,20 @@ export function DiscoverTable({ items, portfolio }: { items: DiscoverItem[]; por
                     </div>
                   </td>
                   <td className="font-figures py-2.5 text-right font-mono font-semibold">{i.score}</td>
+                  <td className="font-figures py-2.5 text-right font-mono">{i.opportunity}</td>
                   <td
-                    className={`font-figures py-2.5 text-right font-mono ${i.fit ? (i.fit.deltaVolAt5 <= 0 ? "text-[var(--success)]" : "") : "text-[var(--muted)]"}`}
+                    className="font-figures py-2.5 text-right font-mono"
+                    title={i.sectorPct !== null && i.sector ? `You already have ${i.sectorPct.toFixed(1)}% in ${i.sector}` : undefined}
+                  >
+                    {i.portfolioFit}
+                  </td>
+                  <td
+                    className={`font-figures py-2.5 text-right font-mono text-xs ${i.fit ? (i.fit.deltaVolAt5 <= 0 ? "text-[var(--success)]" : "text-[var(--danger)]") : "text-[var(--muted)]"}`}
                     title={i.fit ? `Correlation with your portfolio ${i.fit.corr.toFixed(2)}` : "Not enough history"}
                   >
-                    {i.fit ? `${i.fit.deltaVolAt5 > 0 ? "+" : ""}${i.fit.deltaVolAt5.toFixed(2)}` : "—"}
+                    {i.fit && portfolio
+                      ? `${portfolio.volatilityPct.toFixed(1)} → ${(portfolio.volatilityPct + i.fit.deltaVolAt5).toFixed(1)}%`
+                      : "—"}
                   </td>
                   <td className="py-2.5 text-right text-xs">
                     {i.analysts ? <AnalystBar a={i.analysts} /> : <span className="text-[var(--muted)]">—</span>}

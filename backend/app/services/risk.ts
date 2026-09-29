@@ -416,33 +416,45 @@ export function earningsMoves(reports: EarningsReport[], closes: Closes, today: 
   return moves.slice(0, 8)
 }
 
+/** A stock's next report within `days`, with its typical and worst earnings-day move. Null if none/no history. */
+export async function nextEarnings(symbol: string, closes: Closes, days = 60) {
+  const today = new Date().toISOString().slice(0, 10)
+  const horizon = minusDays(today, -days)
+  const { data } = json(await callTool('get_earnings_results', { symbol }))
+  const reports: EarningsReport[] = (data.results ?? [])
+    .filter((x: any) => x.report?.date)
+    .map((x: any) => ({ date: x.report.date, timing: x.report.timing ?? null }))
+  const next = reports
+    .filter((x) => x.date >= today && x.date <= horizon)
+    .sort((a, b) => a.date.localeCompare(b.date))[0]
+  if (!next) return null
+  const moves = earningsMoves(reports, closes, today)
+  if (!moves.length) return null
+  return {
+    date: next.date,
+    timing: next.timing,
+    avgMovePct: round(mean(moves), 1)!,
+    maxMovePct: round(Math.max(...moves), 1)!,
+    reports: moves.length,
+  }
+}
+
 /** Next report within 60 days per held stock, with its typical earnings-day move and $ at stake. */
 async function earningsAhead(holdings: Holding[], closes: Map<string, Closes>, total: number) {
-  const today = new Date().toISOString().slice(0, 10)
-  const horizon = minusDays(today, -60)
   const stocks = holdings.filter((h) => h.type === 'equity' && h.sector !== 'Funds & ETFs')
   const settled = await Promise.allSettled(
     stocks.map(async (h) => {
-      const { data } = json(await callTool('get_earnings_results', { symbol: h.symbol }))
-      const reports: EarningsReport[] = (data.results ?? [])
-        .filter((x: any) => x.report?.date)
-        .map((x: any) => ({ date: x.report.date, timing: x.report.timing ?? null }))
-      const next = reports
-        .filter((x) => x.date >= today && x.date <= horizon)
-        .sort((a, b) => a.date.localeCompare(b.date))[0]
-      if (!next) return null
-      const moves = earningsMoves(reports, closes.get(h.symbol) ?? new Map(), today)
-      if (!moves.length) return null
-      const avg = mean(moves)
+      const e = await nextEarnings(h.symbol, closes.get(h.symbol) ?? new Map())
+      if (!e) return null
       return {
         symbol: h.symbol,
-        date: next.date,
-        timing: next.timing,
+        date: e.date,
+        timing: e.timing,
         weightPct: round((h.value / total) * 100, 1),
-        avgMovePct: round(avg, 1),
-        maxMovePct: round(Math.max(...moves), 1),
-        atStake: round((h.value * avg) / 100),
-        reports: moves.length,
+        avgMovePct: e.avgMovePct,
+        maxMovePct: e.maxMovePct,
+        atStake: round((h.value * e.avgMovePct) / 100),
+        reports: e.reports,
       }
     })
   )

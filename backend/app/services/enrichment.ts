@@ -248,7 +248,9 @@ export async function getFundamentals(symbols: string[]): Promise<Map<string, Fu
     for (const f of data.results ?? []) {
       if (!f?.symbol) continue
       // ETFs all come back as sector "Miscellaneous" — the industry is what tells them apart.
-      const fund = /investment trusts|mutual funds/i.test(f.industry ?? '')
+      // Real estate investment trusts (O, PLD…) are operating companies, not funds.
+      const industry = f.industry ?? ''
+      const fund = /investment trusts|mutual funds/i.test(industry) && !/real estate/i.test(industry)
       out.set(f.symbol, {
         sector: fund ? 'Funds & ETFs' : (f.sector ?? null),
         fund,
