@@ -1,7 +1,11 @@
 "use client";
 
 import { Fragment, useState } from "react";
+import { Activity, BarChart3, Building2, DollarSign, Gauge, Percent, Puzzle, Sparkles, Target, TrendingUp, Users, type LucideIcon } from "lucide-react";
 import { TickerLogo } from "@/components/TickerLogo";
+import { HeadLabel, Pagination } from "@/components/TableKit";
+
+const PAGE_SIZE = 15;
 
 export type Source = "watchlist" | "peer" | "diversifier";
 
@@ -49,16 +53,16 @@ export type PortfolioContext = {
 };
 
 type Key = "score" | "opportunity" | "portfolioFit" | "fit" | "analysts" | "upside" | "revenueGrowth" | "pe" | "return52w";
-const COLUMNS: { key: Key; label: string; title: string; asc?: boolean }[] = [
-  { key: "score", label: "Score", title: "55% Opportunity + 45% Portfolio fit" },
-  { key: "opportunity", label: "Opportunity", title: "The stock on its own: analyst conviction and upside (discounted when few analysts cover it), revenue growth, margin, earnings beats" },
-  { key: "portfolioFit", label: "Fit", title: "Next to what you hold: how much it lowers your volatility, how crowded its sector already is in your portfolio, and its beta" },
-  { key: "fit", label: "Volatility at 5%", title: "Your portfolio's annual volatility now → if this became 5% of it", asc: true },
-  { key: "analysts", label: "Analysts", title: "Share of analysts rating it Buy, and how many cover it" },
-  { key: "upside", label: "Upside", title: "Distance to the analysts' mean price target" },
-  { key: "revenueGrowth", label: "Rev. growth", title: "Revenue growth, trailing 12 months vs the year before" },
-  { key: "pe", label: "P/E", title: "Price / earnings, trailing 12 months (lower is cheaper)", asc: true },
-  { key: "return52w", label: "1Y return", title: "Price return over the last year. Not part of the score: big run-ups can mean momentum or expectations already priced in" },
+const COLUMNS: { key: Key; label: string; icon: LucideIcon; title: string; asc?: boolean }[] = [
+  { key: "score", label: "Score", icon: Sparkles, title: "55% Opportunity + 45% Portfolio fit" },
+  { key: "opportunity", label: "Opportunity", icon: Target, title: "The stock on its own: analyst conviction and upside (discounted when few analysts cover it), revenue growth, margin, earnings beats" },
+  { key: "portfolioFit", label: "Fit", icon: Puzzle, title: "Next to what you hold: how much it lowers your volatility, how crowded its sector already is in your portfolio, and its beta" },
+  { key: "fit", label: "Volatility at 5%", icon: Activity, title: "Your portfolio's annual volatility now → if this became 5% of it", asc: true },
+  { key: "analysts", label: "Analysts", icon: Users, title: "Share of analysts rating it Buy, and how many cover it" },
+  { key: "upside", label: "Upside", icon: TrendingUp, title: "Distance to the analysts' mean price target" },
+  { key: "revenueGrowth", label: "Rev. growth", icon: BarChart3, title: "Revenue growth, trailing 12 months vs the year before" },
+  { key: "pe", label: "P/E", icon: Gauge, title: "Price / earnings, trailing 12 months (lower is cheaper)", asc: true },
+  { key: "return52w", label: "1Y return", icon: Percent, title: "Price return over the last year. Not part of the score: big run-ups can mean momentum or expectations already priced in" },
 ];
 const SOURCES: { key: Source | "all"; label: string }[] = [
   { key: "all", label: "All" },
@@ -299,6 +303,7 @@ export function DiscoverTable({ items, portfolio }: { items: DiscoverItem[]; por
   const [source, setSource] = useState<Source | "all">("all");
   const [onlyNew, setOnlyNew] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
 
   const rows = items
     .filter((i) => (source === "all" || i.sources.includes(source)) && (!onlyNew || i.newIndustry || i.kind === "fund"))
@@ -309,6 +314,7 @@ export function DiscoverTable({ items, portfolio }: { items: DiscoverItem[]; por
       if (y === null) return -1;
       return sort.desc ? y - x : x - y;
     });
+  const pageRows = rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   return (
     <>
@@ -319,7 +325,7 @@ export function DiscoverTable({ items, portfolio }: { items: DiscoverItem[]; por
             <button
               key={s.key}
               type="button"
-              onClick={() => setSource(s.key)}
+              onClick={() => (setSource(s.key), setPage(0))}
               aria-pressed={source === s.key}
               className={`rounded-md border px-2.5 py-1 text-xs font-medium ${
                 source === s.key
@@ -332,39 +338,43 @@ export function DiscoverTable({ items, portfolio }: { items: DiscoverItem[]; por
           );
         })}
         <label className="ml-auto inline-flex cursor-pointer items-center gap-2 text-xs text-[var(--secondary-foreground)]">
-          <input type="checkbox" checked={onlyNew} onChange={(e) => setOnlyNew(e.target.checked)} />
+          <input type="checkbox" checked={onlyNew} onChange={(e) => (setOnlyNew(e.target.checked), setPage(0))} />
           Only what I don&apos;t have exposure to
         </label>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[1080px] text-sm">
-          <thead>
+      <div className="h-[640px] overflow-auto rounded-md border border-[var(--border)]">
+        <table className="w-full min-w-[1240px] text-sm">
+          <thead className="sticky top-0 z-10 bg-[var(--surface)] shadow-[0_1px_0_var(--border)]">
             <tr className="text-left text-xs text-[var(--muted)]">
-              <th className="pb-2 font-normal">Company</th>
+              <th className="py-2.5 pl-3 font-normal">
+                <HeadLabel icon={Building2}>Company</HeadLabel>
+              </th>
               {COLUMNS.map((c) => (
-                <th key={c.key} className="pb-2 text-right font-normal" title={c.title}>
+                <th key={c.key} className="py-2.5 pl-6 text-right font-normal whitespace-nowrap" title={c.title}>
                   <button
                     type="button"
-                    onClick={() => setSort((s) => ({ key: c.key, desc: s.key === c.key ? !s.desc : !c.asc }))}
+                    onClick={() => (setSort((s) => ({ key: c.key, desc: s.key === c.key ? !s.desc : !c.asc })), setPage(0))}
                     className={`hover:text-[var(--foreground)] ${sort.key === c.key ? "text-[var(--foreground)]" : ""}`}
                   >
-                    {c.label}
+                    <HeadLabel icon={c.icon}>{c.label}</HeadLabel>
                     {sort.key === c.key ? (sort.desc ? " ↓" : " ↑") : ""}
                   </button>
                 </th>
               ))}
-              <th className="pb-2 text-right font-normal">Price</th>
+              <th className="py-2.5 pr-3 pl-6 text-right font-normal">
+                <HeadLabel icon={DollarSign}>Price</HeadLabel>
+              </th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((i) => (
+            {pageRows.map((i) => (
               <Fragment key={i.symbol}>
                 <tr
                   className={`cursor-pointer border-t border-[var(--border)] align-middle hover:bg-[var(--surface-hover)] ${open === i.symbol ? "bg-[var(--surface-hover)]" : ""}`}
                   onClick={() => setOpen(open === i.symbol ? null : i.symbol)}
                   aria-expanded={open === i.symbol}
                 >
-                  <td className="py-2.5 pr-3 pl-1">
+                  <td className="py-2.5 pr-3 pl-3">
                     <div className="flex items-center gap-2.5">
                       <TickerLogo symbol={i.symbol} size={28} />
                       <div className="min-w-0">
@@ -406,30 +416,30 @@ export function DiscoverTable({ items, portfolio }: { items: DiscoverItem[]; por
                       </div>
                     </div>
                   </td>
-                  <td className="font-figures py-2.5 text-right font-mono font-semibold">{i.score}</td>
-                  <td className="font-figures py-2.5 text-right font-mono">{i.opportunity}</td>
+                  <td className="font-figures py-2.5 pl-6 text-right font-mono whitespace-nowrap font-semibold">{i.score}</td>
+                  <td className="font-figures py-2.5 pl-6 text-right font-mono whitespace-nowrap">{i.opportunity}</td>
                   <td
-                    className="font-figures py-2.5 text-right font-mono"
+                    className="font-figures py-2.5 pl-6 text-right font-mono whitespace-nowrap"
                     title={i.sectorPct !== null && i.sector ? `You already have ${i.sectorPct.toFixed(1)}% in ${i.sector}` : undefined}
                   >
                     {i.portfolioFit}
                   </td>
                   <td
-                    className={`font-figures py-2.5 text-right font-mono text-xs ${i.fit ? (i.fit.deltaVolAt5 <= 0 ? "text-[var(--success)]" : "text-[var(--danger)]") : "text-[var(--muted)]"}`}
+                    className={`font-figures py-2.5 pl-6 text-right font-mono whitespace-nowrap text-xs ${i.fit ? (i.fit.deltaVolAt5 <= 0 ? "text-[var(--success)]" : "text-[var(--danger)]") : "text-[var(--muted)]"}`}
                     title={i.fit ? `Correlation with your portfolio ${i.fit.corr.toFixed(2)}` : "Not enough history"}
                   >
                     {i.fit && portfolio
                       ? `${portfolio.volatilityPct.toFixed(1)} → ${(portfolio.volatilityPct + i.fit.deltaVolAt5).toFixed(1)}%`
                       : "—"}
                   </td>
-                  <td className="py-2.5 text-right text-xs">
+                  <td className="py-2.5 pl-6 text-right text-xs">
                     {i.analysts ? <AnalystBar a={i.analysts} /> : <span className="text-[var(--muted)]">—</span>}
                   </td>
-                  <td className={`font-figures py-2.5 text-right font-mono ${tone(i.target?.upsidePct ?? null)}`}>{pct(i.target?.upsidePct ?? null, true)}</td>
-                  <td className={`font-figures py-2.5 text-right font-mono ${tone(i.revenueGrowth)}`}>{pct(i.revenueGrowth, true)}</td>
-                  <td className="font-figures py-2.5 text-right font-mono">{i.pe === null || i.pe <= 0 ? "—" : i.pe.toFixed(1)}</td>
-                  <td className={`font-figures py-2.5 text-right font-mono ${tone(i.return52w)}`}>{pct(i.return52w, true)}</td>
-                  <td className="py-2.5 pr-1 pl-3 text-right">
+                  <td className={`font-figures py-2.5 pl-6 text-right font-mono whitespace-nowrap ${tone(i.target?.upsidePct ?? null)}`}>{pct(i.target?.upsidePct ?? null, true)}</td>
+                  <td className={`font-figures py-2.5 pl-6 text-right font-mono whitespace-nowrap ${tone(i.revenueGrowth)}`}>{pct(i.revenueGrowth, true)}</td>
+                  <td className="font-figures py-2.5 pl-6 text-right font-mono whitespace-nowrap">{i.pe === null || i.pe <= 0 ? "—" : i.pe.toFixed(1)}</td>
+                  <td className={`font-figures py-2.5 pl-6 text-right font-mono whitespace-nowrap ${tone(i.return52w)}`}>{pct(i.return52w, true)}</td>
+                  <td className="py-2.5 pr-3 pl-6 text-right">
                     <p className="font-figures font-mono">{i.price === null ? "—" : `$${i.price.toFixed(2)}`}</p>
                     <p className={`font-figures font-mono text-xs ${tone(i.changePct)}`}>{pct(i.changePct, true, 2)}</p>
                   </td>
@@ -447,6 +457,7 @@ export function DiscoverTable({ items, portfolio }: { items: DiscoverItem[]; por
         </table>
       </div>
       {!rows.length && <p className="mt-4 text-sm text-[var(--muted)]">Nothing matches.</p>}
+      <Pagination page={page} pageSize={PAGE_SIZE} total={rows.length} onPage={setPage} />
     </>
   );
 }

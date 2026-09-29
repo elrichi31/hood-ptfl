@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { Activity, Gauge, ShieldAlert, TrendingDown } from "lucide-react";
+import { Activity, CalendarDays, Clock, DollarSign, Gauge, PieChart, ShieldAlert, Tag, TrendingDown, Zap } from "lucide-react";
+import { HeadLabel } from "@/components/TableKit";
 import type { ReactNode } from "react";
 import { auth } from "@/lib/auth";
 import { backend } from "@/lib/backend";
@@ -223,7 +224,7 @@ export default async function RiskPage() {
                   <th className="pb-2 font-normal" />
                   {r.projection.horizons.map((h) => (
                     <th key={h.label} className="pb-2 text-right font-normal">
-                      {h.label}
+                      <HeadLabel icon={Clock}>{h.label}</HeadLabel>
                     </th>
                   ))}
                 </tr>
@@ -374,14 +375,14 @@ export default async function RiskPage() {
               <table className="w-full min-w-[560px] text-sm">
                 <thead>
                   <tr className="text-left text-xs text-[var(--muted)]">
-                    <th className="pb-2 font-normal">Date</th>
-                    <th className="pb-2 font-normal">Symbol</th>
-                    <th className="pb-2 text-right font-normal">Weight</th>
+                    <th className="pb-2 font-normal"><HeadLabel icon={CalendarDays}>Date</HeadLabel></th>
+                    <th className="pb-2 font-normal"><HeadLabel icon={Tag}>Symbol</HeadLabel></th>
+                    <th className="pb-2 text-right font-normal"><HeadLabel icon={PieChart}>Weight</HeadLabel></th>
                     <th className="pb-2 text-right font-normal" title="Average absolute move on the session that priced in each of the last reports">
-                      Typical move
+                      <HeadLabel icon={Activity}>Typical move</HeadLabel>
                     </th>
-                    <th className="pb-2 text-right font-normal">Biggest</th>
-                    <th className="pb-2 text-right font-normal">At stake</th>
+                    <th className="pb-2 text-right font-normal"><HeadLabel icon={Zap}>Biggest</HeadLabel></th>
+                    <th className="pb-2 text-right font-normal"><HeadLabel icon={DollarSign}>At stake</HeadLabel></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -452,12 +453,12 @@ export default async function RiskPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs text-[var(--muted)]">
-                  <th className="pb-2 font-normal">Symbol</th>
-                  <th className="pb-2 text-right font-normal">Weight</th>
-                  <th className="pb-2 text-right font-normal">Risk</th>
-                  <th className="pb-2 text-right font-normal">Beta</th>
-                  <th className="pb-2 text-right font-normal">Volatility</th>
-                  <th className="pb-2 text-right font-normal">Hit if SPY −10%</th>
+                  <th className="pb-2 font-normal"><HeadLabel icon={Tag}>Symbol</HeadLabel></th>
+                  <th className="pb-2 text-right font-normal"><HeadLabel icon={PieChart}>Weight</HeadLabel></th>
+                  <th className="pb-2 text-right font-normal"><HeadLabel icon={ShieldAlert}>Risk</HeadLabel></th>
+                  <th className="pb-2 text-right font-normal"><HeadLabel icon={Gauge}>Beta</HeadLabel></th>
+                  <th className="pb-2 text-right font-normal"><HeadLabel icon={Activity}>Volatility</HeadLabel></th>
+                  <th className="pb-2 text-right font-normal"><HeadLabel icon={TrendingDown}>Hit if SPY −10%</HeadLabel></th>
                 </tr>
               </thead>
               <tbody>

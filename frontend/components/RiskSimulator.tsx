@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import { applyTrades, portfolioMetrics, type SimHolding, type Trade } from "@/lib/portfolioMath";
 import { TickerLogo } from "@/components/TickerLogo";
+import { ArrowRightLeft, Clock } from "lucide-react";
+import { HeadLabel } from "@/components/TableKit";
 
 type Extra = Record<string, { sector: string | null; returns: number[] }>;
 
@@ -185,8 +187,8 @@ export function RiskSimulator({ holdings, cash, market }: { holdings: SimHolding
         <thead>
           <tr className="text-left text-xs text-[var(--muted)]">
             <th className="pb-1.5 font-normal" />
-            <th className="pb-1.5 text-right font-normal">Now</th>
-            <th className="pb-1.5 text-right font-normal">After</th>
+            <th className="pb-1.5 text-right font-normal"><HeadLabel icon={Clock}>Now</HeadLabel></th>
+            <th className="pb-1.5 text-right font-normal"><HeadLabel icon={ArrowRightLeft}>After</HeadLabel></th>
           </tr>
         </thead>
         <tbody className="font-figures font-mono text-xs">

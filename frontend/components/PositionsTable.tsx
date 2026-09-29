@@ -6,6 +6,8 @@ import { prevCloseFor, priceAgo, priceContext, type Hist } from "@/lib/history";
 import { useLivePrices } from "@/components/LivePrices";
 import { TickerLogo } from "@/components/TickerLogo";
 import { LiveNumber } from "@/components/LiveNumber";
+import { Building2, CalendarDays, DollarSign, Layers, LineChart, TrendingUp, Wallet, type LucideIcon } from "lucide-react";
+import { HeadLabel } from "@/components/TableKit";
 
 type Position = {
   symbol: string;
@@ -275,12 +277,14 @@ function Spark({ values }: { values: number[] }) {
 
 function Th({
   label,
+  icon,
   k,
   sort,
   onSort,
   align = "right",
 }: {
   label: string;
+  icon: LucideIcon;
   k?: SortKey;
   sort: { key: SortKey; desc: boolean };
   onSort: (k: SortKey) => void;
@@ -300,11 +304,11 @@ function Th({
           onClick={() => onSort(k)}
           className={`uppercase hover:text-[var(--foreground)] ${active ? "text-[var(--foreground)]" : ""}`}
         >
-          {label}
+          <HeadLabel icon={icon}>{label}</HeadLabel>
           <span className="ml-1 inline-block w-2">{active ? (sort.desc ? "↓" : "↑") : ""}</span>
         </button>
       ) : (
-        label
+        <HeadLabel icon={icon}>{label}</HeadLabel>
       )}
     </th>
   );
@@ -443,13 +447,13 @@ export function PositionsTable({
         <table className="w-full min-w-[860px] border-collapse text-sm">
           <thead>
             <tr className="border-b border-[var(--border)]">
-              <Th label="Name" k="symbol" align="left" {...th} />
-              <Th label="Price" k="price" {...th} />
-              <Th label={PERIOD_LABEL[period]} k="today" {...th} />
-              <Th label="7D" {...th} />
-              <Th label="Shares · Avg cost" {...th} />
-              <Th label="Market value" k="value" {...th} />
-              <Th label="Total return" k="gain" {...th} />
+              <Th label="Name" icon={Building2} k="symbol" align="left" {...th} />
+              <Th label="Price" icon={DollarSign} k="price" {...th} />
+              <Th label={PERIOD_LABEL[period]} icon={CalendarDays} k="today" {...th} />
+              <Th label="7D" icon={LineChart} {...th} />
+              <Th label="Shares · Avg cost" icon={Layers} {...th} />
+              <Th label="Market value" icon={Wallet} k="value" {...th} />
+              <Th label="Total return" icon={TrendingUp} k="gain" {...th} />
             </tr>
           </thead>
           <tbody>
