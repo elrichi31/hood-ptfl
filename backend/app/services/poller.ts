@@ -1,4 +1,5 @@
 import logger from '@adonisjs/core/services/logger'
+import db from '@adonisjs/lucid/services/db'
 import PortfolioSnapshot from '#models/portfolio_snapshot'
 import PositionSnapshot from '#models/position_snapshot'
 import { getBalance, getPositions, type Position } from '#services/portfolio'
@@ -47,6 +48,38 @@ export async function heldPositions() {
 const EXTRAS_INTERVAL_MS = 30 * 60 * 1000
 let extrasAt = 0
 
+/** Saves a portfolio balance and its aligned positions. */
+export async function saveSnapshot(balance: Latest['balance'], positions: Latest['positions']) {
+  // Managed transaction commits both writes, or rolls everything back on any failure.
+  return db.transaction(async (trx) => {
+    const snapshot = await PortfolioSnapshot.create(
+      {
+        totalValue: balance.total,
+        cash: balance.accounts.reduce((sum, a) => sum + a.cash, 0),
+      },
+      { client: trx }
+    )
+
+    const rows = (type: 'equity' | 'crypto', list: Position[]) =>
+      list.map((p) => ({
+        portfolioSnapshotId: snapshot.id,
+        assetType: type,
+        symbol: p.symbol,
+        quantity: p.quantity,
+        avgCost: p.avgCost,
+        price: p.price,
+        value: p.value,
+      }))
+
+    await PositionSnapshot.createMany(
+      [...rows('equity', positions.equities), ...rows('crypto', positions.crypto)],
+      { client: trx }
+    )
+
+    return snapshot
+  })
+}
+
 async function pollOnce() {
   // pnl/orders are extras: a failure there keeps the previous value instead of dropping the snapshot.
   // They barely change, so refresh them every 30 min instead of every 5-min poll.
@@ -59,30 +92,13 @@ async function pollOnce() {
   ])
   if (refreshExtras) extrasAt = Date.now()
 
-  const snapshot = await PortfolioSnapshot.create({
-    totalValue: balance.total,
-    cash: balance.accounts.reduce((sum, a) => sum + a.cash, 0),
-  })
-
-  const rows = (type: 'equity' | 'crypto', list: Position[]) =>
-    list.map((p) => ({
-      portfolioSnapshotId: snapshot.id,
-      assetType: type,
-      symbol: p.symbol,
-      quantity: p.quantity,
-      avgCost: p.avgCost,
-      price: p.price,
-      value: p.value,
-    }))
-
-  await PositionSnapshot.createMany([
-    ...rows('equity', positions.equities),
-    ...rows('crypto', positions.crypto),
-  ])
+  const snapshot = await saveSnapshot(balance, positions)
 
   latest = { at: snapshot.createdAt.toISO()!, balance, positions, pnl, orders }
   await computeDailyPnl(3).catch((err) => logger.error({ err }, '[daily-pnl] update failed'))
-  logger.info(`[robinhood:poll] snapshot #${snapshot.id} saved — total $${balance.total.toFixed(2)}`)
+  logger.info(
+    `[robinhood:poll] snapshot #${snapshot.id} saved — total $${balance.total.toFixed(2)}`
+  )
 }
 
 /** Fetches the portfolio immediately, then every 5 min while the market's open, 30 min otherwise. */
@@ -96,7 +112,9 @@ export function startPolling() {
     const { open, msToBoundary } = marketClock()
     // +5s so the boundary tick sees the new state (open at 9:30:05, closing snapshot at 16:00:05).
     const delay = Math.min(open ? MARKET_INTERVAL_MS : OFF_HOURS_INTERVAL_MS, msToBoundary + 5000)
-    logger.info(`[robinhood:poll] next in ${(delay / 60000).toFixed(1)}min (market ${open ? 'open' : 'closed'})`)
+    logger.info(
+      `[robinhood:poll] next in ${(delay / 60000).toFixed(1)}min (market ${open ? 'open' : 'closed'})`
+    )
     setTimeout(tick, delay)
   }
   tick()
