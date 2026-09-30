@@ -14,7 +14,10 @@ export type ScannedRoutes = {
     'news.index': { paramsTuple?: []; params?: {} }
     'usage.index': { paramsTuple?: []; params?: {} }
     'risk.index': { paramsTuple?: []; params?: {} }
+    'risk.returns': { paramsTuple: [ParamValue]; params: {'symbol': ParamValue} }
     'live.stream': { paramsTuple?: []; params?: {} }
+    'discover.index': { paramsTuple?: []; params?: {} }
+    'insiders.index': { paramsTuple?: []; params?: {} }
   }
   GET: {
     'portfolio.latest': { paramsTuple?: []; params?: {} }
@@ -27,7 +30,10 @@ export type ScannedRoutes = {
     'news.index': { paramsTuple?: []; params?: {} }
     'usage.index': { paramsTuple?: []; params?: {} }
     'risk.index': { paramsTuple?: []; params?: {} }
+    'risk.returns': { paramsTuple: [ParamValue]; params: {'symbol': ParamValue} }
     'live.stream': { paramsTuple?: []; params?: {} }
+    'discover.index': { paramsTuple?: []; params?: {} }
+    'insiders.index': { paramsTuple?: []; params?: {} }
   }
   HEAD: {
     'portfolio.latest': { paramsTuple?: []; params?: {} }
@@ -40,7 +46,10 @@ export type ScannedRoutes = {
     'news.index': { paramsTuple?: []; params?: {} }
     'usage.index': { paramsTuple?: []; params?: {} }
     'risk.index': { paramsTuple?: []; params?: {} }
+    'risk.returns': { paramsTuple: [ParamValue]; params: {'symbol': ParamValue} }
     'live.stream': { paramsTuple?: []; params?: {} }
+    'discover.index': { paramsTuple?: []; params?: {} }
+    'insiders.index': { paramsTuple?: []; params?: {} }
   }
 }
 declare module '@adonisjs/core/types/http' {

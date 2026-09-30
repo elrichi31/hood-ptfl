@@ -61,9 +61,16 @@ export function foldTrades(rows: any[], since: string): InsiderTrade[] {
     const shares = g.reduce((s, r) => s + Math.abs(r.change), 0)
     const value = g.reduce((s, r) => s + Math.abs(r.change) * (r.transactionPrice || 0), 0)
     const buy = g[0].transactionCode === 'P'
-    // `share` is the position after that line; the smallest (sells) / largest (buys) is after the whole trade.
-    const after = buy ? Math.max(...g.map((r) => r.share ?? 0)) : Math.min(...g.map((r) => r.share ?? 0))
+    // `share` is the position after that line. Walked in trade order, one account's lines chain exactly
+    // (each = previous ± its change). Filings that mix accounts (e.g. Zuckerberg's CZI entities) don't,
+    // and their min/max says nothing about the whole stake — a 0 there read as "sold 100%".
+    const chain = [...g].sort((a, b) => (buy ? a.share - b.share : b.share - a.share))
+    const oneAccount = chain.every(
+      (r, i) => i === 0 || Math.abs(chain[i - 1].share + r.change - r.share) <= 1
+    )
+    const after = oneAccount ? (chain.at(-1)!.share ?? 0) : 0
     const before = buy ? after - shares : after + shares
+    const pct = buy ? (after > 0 ? shares / after : null) : before > 0 ? shares / before : null
     return {
       symbol: g[0].symbol,
       name: g[0].name,
@@ -73,7 +80,7 @@ export function foldTrades(rows: any[], since: string): InsiderTrade[] {
       shares,
       avgPrice: shares ? value / shares : 0,
       value,
-      pctOfStake: buy ? (after > 0 ? (shares / after) * 100 : null) : before > 0 ? (shares / before) * 100 : null,
+      pctOfStake: oneAccount && pct !== null ? pct * 100 : null,
     }
   })
 }

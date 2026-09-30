@@ -25,8 +25,15 @@ export interface ApiDefinition {
   }
   risk: {
     index: typeof routes['risk.index']
+    returns: typeof routes['risk.returns']
   }
   live: {
     stream: typeof routes['live.stream']
+  }
+  discover: {
+    index: typeof routes['discover.index']
+  }
+  insiders: {
+    index: typeof routes['insiders.index']
   }
 }

@@ -37,3 +37,17 @@ test('folds one filing into a single trade and drops non-decisions', ({ assert }
   assert.equal(buy.value, 4000)
   assert.closeTo(buy.pctOfStake!, (200 / 1200) * 100, 1e-9)
 })
+
+test('no stake % when one filing mixes accounts', ({ assert }) => {
+  // META 2026-09-24: a big entity account ends at 1.22M, a small conversion account sells down to 0
+  const [sell] = foldTrades(
+    [
+      line({ transactionCode: 'S', change: -476, transactionPrice: 780, share: 1220703 }),
+      line({ transactionCode: 'S', change: -2146, transactionPrice: 779, share: 1221179 }),
+      line({ transactionCode: 'S', change: -600, transactionPrice: 781, share: 0 }),
+      line({ transactionCode: 'S', change: -4324, transactionPrice: 780, share: 600 }),
+    ],
+    '2026-06-01'
+  )
+  assert.isNull(sell.pctOfStake)
+})

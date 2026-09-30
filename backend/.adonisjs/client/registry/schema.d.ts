@@ -127,6 +127,18 @@ export interface Registry {
       errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/risk_controller').default['index']>>>
     }
   }
+  'risk.returns': {
+    methods: ["GET","HEAD"]
+    pattern: '/api/v1/risk/returns/:symbol'
+    types: {
+      body: {}
+      paramsTuple: [ParamValue]
+      params: { symbol: ParamValue }
+      query: {}
+      response: ExtractResponse<Awaited<ReturnType<import('#controllers/risk_controller').default['returns']>>>
+      errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/risk_controller').default['returns']>>>
+    }
+  }
   'live.stream': {
     methods: ["GET","HEAD"]
     pattern: '/api/v1/live'
@@ -137,6 +149,30 @@ export interface Registry {
       query: {}
       response: ExtractResponse<Awaited<ReturnType<import('#controllers/live_controller').default['stream']>>>
       errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/live_controller').default['stream']>>>
+    }
+  }
+  'discover.index': {
+    methods: ["GET","HEAD"]
+    pattern: '/api/v1/discover'
+    types: {
+      body: {}
+      paramsTuple: []
+      params: {}
+      query: {}
+      response: ExtractResponse<Awaited<ReturnType<import('#controllers/discover_controller').default['index']>>>
+      errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/discover_controller').default['index']>>>
+    }
+  }
+  'insiders.index': {
+    methods: ["GET","HEAD"]
+    pattern: '/api/v1/insiders'
+    types: {
+      body: {}
+      paramsTuple: []
+      params: {}
+      query: {}
+      response: ExtractResponse<Awaited<ReturnType<import('#controllers/insiders_controller').default['index']>>>
+      errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/insiders_controller').default['index']>>>
     }
   }
 }

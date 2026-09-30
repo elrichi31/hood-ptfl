@@ -66,11 +66,29 @@ const routes = {
     tokens: [{"old":"/api/v1/risk","type":0,"val":"api","end":""},{"old":"/api/v1/risk","type":0,"val":"v1","end":""},{"old":"/api/v1/risk","type":0,"val":"risk","end":""}],
     types: placeholder as Registry['risk.index']['types'],
   },
+  'risk.returns': {
+    methods: ["GET","HEAD"],
+    pattern: '/api/v1/risk/returns/:symbol',
+    tokens: [{"old":"/api/v1/risk/returns/:symbol","type":0,"val":"api","end":""},{"old":"/api/v1/risk/returns/:symbol","type":0,"val":"v1","end":""},{"old":"/api/v1/risk/returns/:symbol","type":0,"val":"risk","end":""},{"old":"/api/v1/risk/returns/:symbol","type":0,"val":"returns","end":""},{"old":"/api/v1/risk/returns/:symbol","type":1,"val":"symbol","end":""}],
+    types: placeholder as Registry['risk.returns']['types'],
+  },
   'live.stream': {
     methods: ["GET","HEAD"],
     pattern: '/api/v1/live',
     tokens: [{"old":"/api/v1/live","type":0,"val":"api","end":""},{"old":"/api/v1/live","type":0,"val":"v1","end":""},{"old":"/api/v1/live","type":0,"val":"live","end":""}],
     types: placeholder as Registry['live.stream']['types'],
+  },
+  'discover.index': {
+    methods: ["GET","HEAD"],
+    pattern: '/api/v1/discover',
+    tokens: [{"old":"/api/v1/discover","type":0,"val":"api","end":""},{"old":"/api/v1/discover","type":0,"val":"v1","end":""},{"old":"/api/v1/discover","type":0,"val":"discover","end":""}],
+    types: placeholder as Registry['discover.index']['types'],
+  },
+  'insiders.index': {
+    methods: ["GET","HEAD"],
+    pattern: '/api/v1/insiders',
+    tokens: [{"old":"/api/v1/insiders","type":0,"val":"api","end":""},{"old":"/api/v1/insiders","type":0,"val":"v1","end":""},{"old":"/api/v1/insiders","type":0,"val":"insiders","end":""}],
+    types: placeholder as Registry['insiders.index']['types'],
   },
 } as const satisfies Record<string, AdonisEndpoint>
 
