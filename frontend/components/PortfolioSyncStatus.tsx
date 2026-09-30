@@ -14,13 +14,16 @@ export function PortfolioSyncStatus({
   tz: string;
   checkedAt: number;
 }) {
-  // Use the server's initial clock on both SSR and hydration, then age locally.
-  const [clock, setClock] = useState(checkedAt);
-  const now = Math.max(checkedAt, clock);
+  // Start with the server clock for stable hydration; never trust the browser's wall clock.
+  const [clock, setClock] = useState({ checkedAt, elapsed: 0 });
+  const now = checkedAt + (clock.checkedAt === checkedAt ? clock.elapsed : 0);
   useEffect(() => {
-    const id = setInterval(() => setClock(Date.now()), 60_000);
+    const startedAt = performance.now();
+    const id = setInterval(() => {
+      setClock({ checkedAt, elapsed: performance.now() - startedAt });
+    }, 60_000);
     return () => clearInterval(id);
-  }, []);
+  }, [checkedAt]);
 
   const savedAt = at ? Date.parse(at) : NaN;
   const available = Number.isFinite(savedAt) && savedAt <= now;
