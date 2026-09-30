@@ -3,9 +3,9 @@
 import { Fragment, useState } from "react";
 import { Activity, BarChart3, Building2, DollarSign, Gauge, Percent, Puzzle, Sparkles, Target, TrendingUp, Users, type LucideIcon } from "lucide-react";
 import { TickerLogo } from "@/components/TickerLogo";
-import { HeadLabel, Pagination } from "@/components/TableKit";
+import { HeadLabel } from "@/components/TableKit";
+import { Pagination, usePaging } from "@/components/Paging";
 
-const PAGE_SIZE = 15;
 
 export type Source = "watchlist" | "peer" | "diversifier";
 
@@ -303,7 +303,8 @@ export function DiscoverTable({ items, portfolio }: { items: DiscoverItem[]; por
   const [source, setSource] = useState<Source | "all">("all");
   const [onlyNew, setOnlyNew] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
-  const [page, setPage] = useState(0);
+  const paging = usePaging("discover");
+  const setPage = paging.setPage;
 
   const rows = items
     .filter((i) => (source === "all" || i.sources.includes(source)) && (!onlyNew || i.newIndustry || i.kind === "fund"))
@@ -314,7 +315,7 @@ export function DiscoverTable({ items, portfolio }: { items: DiscoverItem[]; por
       if (y === null) return -1;
       return sort.desc ? y - x : x - y;
     });
-  const pageRows = rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const pageRows = paging.slice(rows);
 
   return (
     <>
@@ -457,7 +458,7 @@ export function DiscoverTable({ items, portfolio }: { items: DiscoverItem[]; por
         </table>
       </div>
       {!rows.length && <p className="mt-4 text-sm text-[var(--muted)]">Nothing matches.</p>}
-      <Pagination page={page} pageSize={PAGE_SIZE} total={rows.length} onPage={setPage} />
+      <Pagination paging={paging} total={rows.length} />
     </>
   );
 }

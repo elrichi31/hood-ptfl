@@ -8,6 +8,7 @@ import { TickerLogo } from "@/components/TickerLogo";
 import { LiveNumber } from "@/components/LiveNumber";
 import { Building2, CalendarDays, DollarSign, Layers, LineChart, TrendingUp, Wallet, type LucideIcon } from "lucide-react";
 import { HeadLabel } from "@/components/TableKit";
+import { Pagination, usePaging } from "@/components/Paging";
 
 type Position = {
   symbol: string;
@@ -336,6 +337,7 @@ export function PositionsTable({
   const [openPosition, setOpenPosition] = useState<Position | null>(null);
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "value", desc: true });
   const { prices } = useLivePrices();
+  const paging = usePaging(crypto ? "positions-crypto" : "positions");
   // Scans the whole snapshot history per row — only redo it when the history or period changes,
   // never on a live price tick (that re-rendered every second and janked scrolling).
   const baselines = useMemo(
@@ -457,7 +459,7 @@ export function PositionsTable({
             </tr>
           </thead>
           <tbody>
-            {data.map(({ p, week, today, todayUsd, gain, gainPct, weight }) => (
+            {paging.slice(data).map(({ p, week, today, todayUsd, gain, gainPct, weight }) => (
               <tr
                 key={p.symbol}
                 onClick={enrichable ? () => setOpenPosition(p) : undefined}
@@ -541,6 +543,7 @@ export function PositionsTable({
           </tfoot>
         </table>
       </div>
+      <Pagination paging={paging} total={data.length} />
       {enrichable && <SymbolModal position={openPosition} onClose={() => setOpenPosition(null)} />}
     </>
   );

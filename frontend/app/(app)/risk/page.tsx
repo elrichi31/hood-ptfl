@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { Activity, CalendarDays, Clock, DollarSign, Gauge, PieChart, ShieldAlert, Tag, TrendingDown, Zap } from "lucide-react";
 import { HeadLabel } from "@/components/TableKit";
+import { PagedTable } from "@/components/Paging";
 import type { ReactNode } from "react";
 import { auth } from "@/lib/auth";
 import { backend } from "@/lib/backend";
@@ -371,10 +372,11 @@ export default async function RiskPage() {
 
         {r.earnings.length > 0 && (
           <Card title="Event risk: earnings in the next 60 days" className="lg:col-span-7">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[560px] text-sm">
-                <thead>
-                  <tr className="text-left text-xs text-[var(--muted)]">
+            <PagedTable
+              id="risk-earnings"
+              className="w-full min-w-[560px] text-sm"
+              head={
+                <tr className="text-left text-xs text-[var(--muted)]">
                     <th className="pb-2 font-normal"><HeadLabel icon={CalendarDays}>Date</HeadLabel></th>
                     <th className="pb-2 font-normal"><HeadLabel icon={Tag}>Symbol</HeadLabel></th>
                     <th className="pb-2 text-right font-normal"><HeadLabel icon={PieChart}>Weight</HeadLabel></th>
@@ -383,10 +385,9 @@ export default async function RiskPage() {
                     </th>
                     <th className="pb-2 text-right font-normal"><HeadLabel icon={Zap}>Biggest</HeadLabel></th>
                     <th className="pb-2 text-right font-normal"><HeadLabel icon={DollarSign}>At stake</HeadLabel></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {r.earnings.map((e) => (
+                </tr>
+              }
+              rows={r.earnings.map((e) => (
                     <tr key={e.symbol} className="border-t border-[var(--border)]">
                       <td className="py-2">
                         {shortDate(e.date, false)}{" "}
@@ -404,9 +405,7 @@ export default async function RiskPage() {
                       <td className="font-figures py-2 text-right font-mono">±{money(e.atStake)}</td>
                     </tr>
                   ))}
-                </tbody>
-              </table>
-            </div>
+            />
             <p className="mt-3 text-xs text-[var(--muted)]">
               Typical move = average absolute move on the session that priced in each of the last ~2 years of reports. Each is a
               one-day jump for that holding; they land on different days and don&apos;t add up to a portfolio move.
@@ -449,20 +448,20 @@ export default async function RiskPage() {
         </Card>
 
         <Card title="By position" className="lg:col-span-7">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs text-[var(--muted)]">
+          <PagedTable
+            id="risk-positions"
+            className="w-full text-sm"
+            head={
+              <tr className="text-left text-xs text-[var(--muted)]">
                   <th className="pb-2 font-normal"><HeadLabel icon={Tag}>Symbol</HeadLabel></th>
                   <th className="pb-2 text-right font-normal"><HeadLabel icon={PieChart}>Weight</HeadLabel></th>
                   <th className="pb-2 text-right font-normal"><HeadLabel icon={ShieldAlert}>Risk</HeadLabel></th>
                   <th className="pb-2 text-right font-normal"><HeadLabel icon={Gauge}>Beta</HeadLabel></th>
                   <th className="pb-2 text-right font-normal"><HeadLabel icon={Activity}>Volatility</HeadLabel></th>
                   <th className="pb-2 text-right font-normal"><HeadLabel icon={TrendingDown}>Hit if SPY −10%</HeadLabel></th>
-                </tr>
-              </thead>
-              <tbody>
-                {r.positions.map((p) => {
+              </tr>
+            }
+            rows={r.positions.map((p) => {
                   const beta = p.beta ?? p.betaAssumed ?? 0;
                   return (
                     <tr key={p.symbol} className="border-t border-[var(--border)]">
@@ -490,9 +489,7 @@ export default async function RiskPage() {
                     </tr>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
+          />
         </Card>
       </div>
     </main>
