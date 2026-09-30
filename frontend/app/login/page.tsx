@@ -10,7 +10,7 @@ export default function LoginPage() {
           </div>
           <h1 className="text-xl font-semibold">Sign in to Portfolio</h1>
         </div>
-        <AuthForm mode="login" />
+        <AuthForm />
       </div>
     </main>
   );

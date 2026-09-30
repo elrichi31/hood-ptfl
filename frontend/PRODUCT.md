@@ -12,7 +12,7 @@ Next.js (App Router, Server Components) frontend + AdonisJS backend that talks t
 
 ## Users
 
-Nicolas and his family. Multiple people will log in with their own accounts (sign-up enabled, not a single seeded user) to view the same portfolio.
+Nicolas and his family. Multiple people log in with existing accounts to view the same portfolio. Public registration is disabled; new accounts must be provisioned through a controlled administrative process.
 
 ## Product Purpose
 
@@ -30,7 +30,7 @@ Backend holds the Robinhood OAuth session (one connected account, `node ace robi
 
 - Read-only: the backend's `callTool` guard only allows MCP tools prefixed `get_`; no order placement, ever.
 - One Robinhood account is connected app-wide — all logged-in users see the same portfolio (not per-user brokerage connections). Per-user connections are explicitly out of scope for now.
-- Auth is multi-user with self-service sign-up (family members create their own login).
+- Auth is multi-user with public sign-up disabled. Existing accounts continue to sign in; adding someone requires controlled account provisioning.
 - Numbers shown: total portfolio value, per-account balances, per-position quantity/avg cost/current price/market value/return %, for both equities and crypto.
 
 ## Evidence on Hand

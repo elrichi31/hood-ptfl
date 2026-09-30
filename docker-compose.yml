@@ -40,7 +40,6 @@ services:
       BACKEND_TOKEN: ${BACKEND_TOKEN}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL}
-      ALLOWED_EMAILS: ${ALLOWED_EMAILS}
     volumes:
       - frontend-storage:/app/storage # Better Auth users/sessions
 
