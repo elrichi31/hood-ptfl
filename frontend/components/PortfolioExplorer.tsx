@@ -5,6 +5,7 @@ import { Card } from "@/components/Card";
 import { PortfolioChart } from "@/components/PortfolioChart";
 import { flowAdjustedPnl, prevCloseIndex, robinhoodToday, splitPnl, stepPnl } from "@/lib/history";
 import { useLiveHistory } from "@/components/LivePrices";
+import { LiveNumber } from "@/components/LiveNumber";
 
 export type PositionHistory = {
   at: string[];
@@ -140,7 +141,7 @@ export function PortfolioExplorer({
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         <Card title="Value over time" action={tabs} className="lg:col-span-8">
           <div className="mb-1 flex flex-wrap items-baseline gap-x-2">
-            <span className="font-figures font-mono text-2xl font-semibold">{money(last)}</span>
+            <span className="font-figures font-mono text-2xl font-semibold"><LiveNumber value={last} /></span>
             <span className={`font-figures font-mono text-sm ${upDown(change)}`}>
               {signedMoney(change)} ({signedPct(first ? (change / first) * 100 : 0)})
             </span>
