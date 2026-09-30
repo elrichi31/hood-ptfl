@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Card } from "@/components/Card";
 import { PortfolioChart } from "@/components/PortfolioChart";
 import { flowAdjustedPnl, prevCloseIndex, robinhoodToday, splitPnl, stepPnl } from "@/lib/history";
@@ -22,6 +22,7 @@ const RANGES = [
   { key: "ALL", label: "Available", ms: Infinity },
 ] as const;
 type RangeKey = (typeof RANGES)[number]["key"];
+const RANGE_KEY = "hood:portfolio-range";
 
 const money = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 const signedMoney = (n: number) => `${n >= 0 ? "+" : "-"}${money(Math.abs(n))}`;
@@ -77,9 +78,34 @@ export function PortfolioExplorer({
   tz: string;
 }) {
   const [range, setRange] = useState<RangeKey>("1D");
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(RANGE_KEY);
+      if (RANGES.some((r) => r.key === stored)) {
+        // Restore only after hydration; the server cannot access browser preferences.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setRange(stored as RangeKey);
+      }
+    } catch { /* Storage may be blocked; keep the default range. */ }
+  }, []);
+  function chooseRange(next: RangeKey) {
+    setRange(next);
+    try { localStorage.setItem(RANGE_KEY, next); }
+    catch { /* Keep selection usable even when persistence is unavailable. */ }
+  }
   const history = useLiveHistory(saved);
   const data = useMemo(() => sliceRange(history, RANGES.find((r) => r.key === range)!.ms), [history, range]);
-  const tabs = <RangeTabs value={range} onChange={setRange} />;
+  const tabs = <RangeTabs value={range} onChange={chooseRange} />;
+
+  if (history.at.length < 2) {
+    return (
+      <Card title="Value over time">
+        <p className="text-sm text-[var(--muted)]">
+          Your portfolio history is still being collected. A point is saved every 5 minutes during market hours and every 30 minutes otherwise. The chart will appear once there are at least two saved points.
+        </p>
+      </Card>
+    );
+  }
 
   const first = data.total[0] ?? 0;
   const last = data.total[data.total.length - 1] ?? 0;
@@ -126,16 +152,6 @@ export function PortfolioExplorer({
     .filter((s) => s.lastValue > 0)
     .sort((a, b) => b.lastValue - a.lastValue);
 
-  if (history.at.length < 2) {
-    return (
-      <Card title="Value over time">
-        <p className="text-sm text-[var(--muted)]">
-          Not enough data yet. Run <code>node ace portfolio:backfill</code> or wait for the poller.
-        </p>
-      </Card>
-    );
-  }
-
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
@@ -172,7 +188,7 @@ export function PortfolioExplorer({
               {new Date(data.at[data.at.length - 1]).toLocaleDateString("en-US", { timeZone: tz, month: "short", day: "numeric", year: "numeric" })}
             </time>
           </p>
-          <PortfolioChart data={data.at.map((at, i) => ({ at, totalValue: data.total[i], cash: data.cash[i] }))} />
+          <PortfolioChart tz={tz} data={data.at.map((at, i) => ({ at, totalValue: data.total[i], cash: data.cash[i] }))} />
         </Card>
         <div className="lg:col-span-4">{aside}</div>
       </div>

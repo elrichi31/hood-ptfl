@@ -28,9 +28,9 @@ function niceTicks(min: number, max: number, count = 5) {
   return ticks;
 }
 
-const dayKey = (t: string) => new Date(t).toDateString();
+const dayKey = (t: string, format: Intl.DateTimeFormat) => format.format(new Date(t));
 
-export function PortfolioChart({ data }: { data: Snapshot[] }) {
+export function PortfolioChart({ data, tz = "America/New_York" }: { data: Snapshot[]; tz?: string }) {
   const [wrapRef, W] = useWidth<HTMLDivElement>();
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<number | null>(null);
@@ -38,7 +38,7 @@ export function PortfolioChart({ data }: { data: Snapshot[] }) {
   if (data.length < 2) {
     return (
       <p className="text-sm text-[var(--muted)]">
-        Collecting data — a point is saved every 5 minutes. Check back soon.
+        Your portfolio history is still being collected. A point is saved every 5 minutes during market hours and every 30 minutes otherwise. The chart will appear once there are at least two saved points.
       </p>
     );
   }
@@ -71,7 +71,8 @@ export function PortfolioChart({ data }: { data: Snapshot[] }) {
 
   // Faint separator at each day change; axis labels are evenly spaced ticks instead, so they never
   // collide (a 1D range that crosses midnight used to stack two dates at the start).
-  const dayBreaks = data.flatMap((d, i) => (i > 0 && dayKey(d.at) !== dayKey(data[i - 1].at) ? [i] : []));
+  const dayFormat = new Intl.DateTimeFormat("en-US", { timeZone: tz });
+  const dayBreaks = data.flatMap((d, i) => (i > 0 && dayKey(d.at, dayFormat) !== dayKey(data[i - 1].at, dayFormat) ? [i] : []));
   const spanMs = new Date(data[data.length - 1].at).getTime() - new Date(data[0].at).getTime();
   const short = spanMs <= 36 * 3600e3;
   const tickCount = Math.min(Math.max(2, Math.floor((W - R) / 110)), data.length);
@@ -80,8 +81,8 @@ export function PortfolioChart({ data }: { data: Snapshot[] }) {
   ];
   const tickLabel = (at: string) =>
     short
-      ? new Date(at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
-      : new Date(at).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      ? new Date(at).toLocaleTimeString("en-US", { timeZone: tz, hour: "numeric", minute: "2-digit" })
+      : new Date(at).toLocaleDateString("en-US", { timeZone: tz, month: "short", day: "numeric" });
 
   const h = hover !== null ? data[hover] : null;
   const hChange = h ? h.totalValue - start : 0;
@@ -174,6 +175,7 @@ export function PortfolioChart({ data }: { data: Snapshot[] }) {
           </p>
           <p className="text-[var(--muted)]">
             {new Date(h.at).toLocaleString("en-US", {
+              timeZone: tz,
               weekday: "short",
               month: "short",
               day: "numeric",
