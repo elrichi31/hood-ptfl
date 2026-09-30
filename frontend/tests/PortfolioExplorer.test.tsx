@@ -20,6 +20,19 @@ function headline(container: HTMLElement) {
 }
 
 describe("PortfolioExplorer animated headline", () => {
+  it("labels the available window honestly and shows its actual dates", () => {
+    const { container, getAllByRole, getByText, queryAllByRole } = render(
+      <PortfolioExplorer history={history} tz="America/New_York" />
+    );
+    expect(queryAllByRole("tab", { name: "All" })).toHaveLength(0);
+    fireEvent.click(getAllByRole("tab", { name: "Available" })[0]);
+    expect(getByText("Available history · up to 90 days")).toBeTruthy();
+    const dates = container.querySelectorAll("time");
+    expect(Array.from(dates, (date) => date.dateTime)).toEqual([history.at[0], history.at[2]]);
+    expect(dates[0].textContent).toBe("Sep 28, 2026");
+    expect(dates[1].textContent).toBe("Sep 30, 2026");
+    expect(headline(container)._data.value).toBe(1200.25);
+  });
   it("renders the latest USD value with rolling digits and reduced-motion support", () => {
     const { container } = render(<PortfolioExplorer history={history} tz="America/New_York" />);
     const element = headline(container);
@@ -41,7 +54,7 @@ describe("PortfolioExplorer animated headline", () => {
   it("keeps the latest total and animation instance when switching ranges", () => {
     const { container, getAllByRole } = render(<PortfolioExplorer history={history} tz="America/New_York" />);
     const element = headline(container);
-    fireEvent.click(getAllByRole("tab", { name: "All" })[0]);
+    fireEvent.click(getAllByRole("tab", { name: "Available" })[0]);
     expect(headline(container)).toBe(element);
     expect(element._data.value).toBe(1200.25);
   });

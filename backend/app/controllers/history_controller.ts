@@ -47,7 +47,16 @@ async function buildPositions(snapshots: PortfolioSnapshot[]) {
 /** Time series of saved snapshots (see #services/poller), for charting. */
 export default class HistoryController {
   async index({ response, request }: HttpContext) {
-    const limit = Number(request.qs().limit ?? 2000)
+    const rawLimit = request.qs().limit
+    const limit = rawLimit === undefined ? 2000 : Number(rawLimit)
+    if (
+      (rawLimit !== undefined && (typeof rawLimit !== 'string' || !/^\d+$/.test(rawLimit))) ||
+      !Number.isSafeInteger(limit) ||
+      limit < 1 ||
+      limit > 10000
+    ) {
+      return response.badRequest({ error: 'limit must be an integer between 1 and 10000' })
+    }
     // Newest N, then back to chronological order for the chart.
     const snapshots = (
       await PortfolioSnapshot.query().orderBy('created_at', 'desc').limit(limit)

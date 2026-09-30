@@ -19,7 +19,7 @@ const RANGES = [
   { key: "3D", label: "3D", ms: 3 * 864e5 },
   { key: "1W", label: "1W", ms: 7 * 864e5 },
   { key: "1M", label: "1M", ms: 31 * 864e5 },
-  { key: "ALL", label: "All", ms: Infinity },
+  { key: "ALL", label: "Available", ms: Infinity },
 ] as const;
 type RangeKey = (typeof RANGES)[number]["key"];
 
@@ -161,6 +161,17 @@ export function PortfolioExplorer({
             <span>Drawdown <span className="text-[var(--danger)]">{(drawdown * 100).toFixed(2)}%</span></span>
             <span>{data.at.length} points</span>
           </div>
+          <p className="mb-2 text-xs text-[var(--muted)]">
+            {range === "ALL" && <span>Available history · up to 90 days</span>}
+            {range === "ALL" && " · "}
+            <time dateTime={data.at[0]}>
+              {new Date(data.at[0]).toLocaleDateString("en-US", { timeZone: tz, month: "short", day: "numeric", year: "numeric" })}
+            </time>
+            {" – "}
+            <time dateTime={data.at[data.at.length - 1]}>
+              {new Date(data.at[data.at.length - 1]).toLocaleDateString("en-US", { timeZone: tz, month: "short", day: "numeric", year: "numeric" })}
+            </time>
+          </p>
           <PortfolioChart data={data.at.map((at, i) => ({ at, totalValue: data.total[i], cash: data.cash[i] }))} />
         </Card>
         <div className="lg:col-span-4">{aside}</div>
