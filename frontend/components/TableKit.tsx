@@ -1,5 +1,5 @@
-"use client";
-
+// No "use client": server pages (Risk) pass icon components to HeadLabel, which can't cross the
+// server→client boundary. Pagination still runs client-side because only client tables import it.
 import type { ReactNode } from "react";
 import { ChevronLeft, ChevronRight, type LucideIcon } from "lucide-react";
 
