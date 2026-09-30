@@ -19,6 +19,7 @@ import {
   LiveTotal,
   LiveQuoteStatus,
 } from "@/components/LivePrices";
+import { PortfolioSyncStatus } from "@/components/PortfolioSyncStatus";
 import { DashboardRetry } from "@/components/DashboardRetry";
 import { StatCard } from "@/components/StatCard";
 
@@ -51,14 +52,6 @@ type Latest = {
 
 const money = (n: number) =>
   n.toLocaleString("en-US", { style: "currency", currency: "USD" });
-// "3 minutes ago" — relative, so it's right regardless of the server's timezone.
-function ago(iso: string) {
-  const min = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
-  const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
-  return min < 60
-    ? rtf.format(-min, "minute")
-    : rtf.format(-Math.round(min / 60), "hour");
-}
 const signed = (n: number) =>
   n >= 0 ? `+${money(n)}` : `-${money(Math.abs(n))}`;
 
@@ -254,6 +247,9 @@ export default async function Home() {
   const posHistory = positionsResult.data;
   const daily = dailyResult.data;
   const tz = await viewerTz();
+  // This async Server Component serializes one request-time clock for stable client hydration.
+  // eslint-disable-next-line react-hooks/purity
+  const checkedAt = Date.now();
   const day = posHistory ? today(posHistory, tz) : null;
   const month = daily ? thisMonth(daily) : null;
   const positions = latest?.positions;
@@ -308,8 +304,8 @@ export default async function Home() {
         </h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
           Here&apos;s your portfolio today
-          {latest ? ` · Last pull ${ago(latest.at)}` : ""}
         </p>
+        <PortfolioSyncStatus at={latest?.at} tz={tz} checkedAt={checkedAt} />
         <LiveQuoteStatus />
         {failed && (
           <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-[var(--border)] p-3">

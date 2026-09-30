@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Home from "@/app/(app)/page";
 import { backend } from "@/lib/backend";
@@ -56,11 +56,164 @@ beforeEach(() => {
     async (path) => new Response(JSON.stringify(data[path])),
   );
 });
-afterEach(() => vi.clearAllMocks());
+afterEach(() => {
+  vi.clearAllMocks();
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
+
+describe("Portfolio synchronization status", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime("2026-09-30T15:01:00Z");
+  });
+
+  it("shows the original successful synchronization time separately from quotes", async () => {
+    render(await Home());
+    const status = screen.getByRole("status", {
+      name: "Portfolio synchronization",
+    });
+    expect(
+      within(status).getByText("Last successful portfolio sync"),
+    ).toBeTruthy();
+    const time = status.querySelector("time")!;
+    expect(time.dateTime).toBe(latest.at);
+    expect(time.textContent).toBe("Sep 30, 2026, 11:00:00 AM");
+    expect(
+      within(status).getByText("Positions & cash · 1 min ago"),
+    ).toBeTruthy();
+    expect(screen.getByText("Reconnecting")).toBeTruthy();
+  });
+
+  it("warns when saved positions are delayed without hiding them or advancing their time", async () => {
+    vi.setSystemTime("2026-09-30T15:36:00Z");
+    const { container } = render(await Home());
+    const status = screen.getByRole("status", {
+      name: "Portfolio synchronization",
+    });
+    expect(within(status).getByText("Portfolio sync delayed")).toBeTruthy();
+    expect(
+      within(status).getByText(
+        "Positions and cash may be outdated; showing last saved data.",
+      ),
+    ).toBeTruthy();
+    expect(status.querySelector("time")!.dateTime).toBe(latest.at);
+    expect(screen.getAllByText("Positions available")).toHaveLength(2);
+    const total = container.querySelector<
+      HTMLElement & { _data: { value: number } }
+    >("number-flow-react");
+    expect(total!._data.value).toBe(100);
+  });
+
+  it("ages while the page stays open and clears the warning only for a newer saved snapshot", async () => {
+    vi.setSystemTime("2026-09-30T15:34:00Z");
+    const { rerender, unmount } = render(await Home());
+    expect(screen.queryByText("Portfolio sync delayed")).toBeNull();
+    act(() => vi.advanceTimersByTime(2 * 60_000));
+    expect(screen.getByText("Portfolio sync delayed")).toBeTruthy();
+    expect(
+      screen
+        .getByRole("status", { name: "Portfolio synchronization" })
+        .querySelector("time")!.dateTime,
+    ).toBe(latest.at);
+    const updatedAt = "2026-09-30T15:36:00Z";
+    vi.mocked(backend).mockImplementation(
+      async (path) =>
+        new Response(
+          JSON.stringify(
+            path === "/api/v1/latest"
+              ? { ...latest, at: updatedAt }
+              : data[path],
+          ),
+        ),
+    );
+    rerender(await Home());
+    expect(screen.queryByText("Portfolio sync delayed")).toBeNull();
+    expect(
+      screen
+        .getByRole("status", { name: "Portfolio synchronization" })
+        .querySelector("time")!.dateTime,
+    ).toBe(updatedAt);
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("does not let fresh live quotes clear a delayed portfolio synchronization", async () => {
+    vi.setSystemTime("2026-09-30T15:36:00Z");
+    class Source {
+      static current: Source;
+      onmessage: ((event: { data: string }) => void) | null = null;
+      constructor() {
+        Source.current = this;
+      }
+      close() {}
+    }
+    vi.stubGlobal("EventSource", Source);
+    render(await Home());
+    act(() =>
+      Source.current.onmessage?.({
+        data: JSON.stringify({
+          prices: { AAPL: 105 },
+          timestamps: { AAPL: Date.now() },
+          provider: "connected",
+          lastTradeAt: Date.now(),
+        }),
+      }),
+    );
+    expect(screen.getByText("Live quotes")).toBeTruthy();
+    expect(screen.getByText("Portfolio sync delayed")).toBeTruthy();
+    expect(
+      screen
+        .getByRole("status", { name: "Portfolio synchronization" })
+        .querySelector("time")!.dateTime,
+    ).toBe(latest.at);
+  });
+
+  it.each(["invalid-date", "2026-10-01T15:00:00Z"])(
+    "does not present an invalid or future saved time as successful: %s",
+    async (at) => {
+      vi.mocked(backend).mockImplementation(
+        async (path) =>
+          new Response(
+            JSON.stringify(
+              path === "/api/v1/latest" ? { ...latest, at } : data[path],
+            ),
+          ),
+      );
+      render(await Home());
+      const status = screen.getByRole("status", {
+        name: "Portfolio synchronization",
+      });
+      expect(
+        within(status).getByText("Portfolio sync unavailable"),
+      ).toBeTruthy();
+      expect(status.querySelector("time")).toBeNull();
+    },
+  );
+
+  it("does not report a successful sync or fabricate a time when portfolio loading fails", async () => {
+    vi.mocked(backend).mockImplementation(async (path) => {
+      if (path === "/api/v1/latest") throw new TypeError("fetch failed");
+      return new Response(JSON.stringify(data[path]));
+    });
+    render(await Home());
+    const status = screen.getByRole("status", {
+      name: "Portfolio synchronization",
+    });
+    expect(within(status).getByText("Portfolio sync unavailable")).toBeTruthy();
+    expect(status.querySelector("time")).toBeNull();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+});
 
 describe("Dashboard partial failures", () => {
   it.each([
-    { type: "brokerage", nickname: { invalid: true }, cash: 100, totalValue: 100 },
+    {
+      type: "brokerage",
+      nickname: { invalid: true },
+      cash: 100,
+      totalValue: 100,
+    },
     { type: { invalid: true }, nickname: null, cash: 100, totalValue: 100 },
   ])("isolates invalid account labels: %j", async (account) => {
     vi.mocked(backend).mockImplementation(
@@ -68,7 +221,10 @@ describe("Dashboard partial failures", () => {
         new Response(
           JSON.stringify(
             path === "/api/v1/latest"
-              ? { ...latest, balance: { ...latest.balance, accounts: [account] } }
+              ? {
+                  ...latest,
+                  balance: { ...latest.balance, accounts: [account] },
+                }
               : data[path],
           ),
         ),
@@ -78,7 +234,8 @@ describe("Dashboard partial failures", () => {
     expect(screen.getByText("Daily chart available")).toBeTruthy();
     expect(screen.getAllByRole("alert").length).toBeGreaterThan(0);
     expect(
-      screen.getAllByText("Service returned invalid data. Please retry.").length,
+      screen.getAllByText("Service returned invalid data. Please retry.")
+        .length,
     ).toBeGreaterThan(0);
     expect(screen.queryByText("Positions available")).toBeNull();
   });
