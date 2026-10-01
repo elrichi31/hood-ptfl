@@ -95,6 +95,15 @@ export function PortfolioExplorer({
   }
   const history = useLiveHistory(saved);
   const data = useMemo(() => sliceRange(history, RANGES.find((r) => r.key === range)!.ms), [history, range]);
+  const chartData = useMemo(() => {
+    const points = [];
+    let pnl = 0;
+    for (let i = 0; i < data.at.length; i++) {
+      if (i > 0) pnl += stepPnl(data, i);
+      points.push({ at: data.at[i], totalValue: data.total[i], cash: data.cash[i], pnl });
+    }
+    return points;
+  }, [data]);
   const tabs = <RangeTabs value={range} onChange={chooseRange} />;
 
   if (history.at.length < 2) {
@@ -188,7 +197,7 @@ export function PortfolioExplorer({
               {new Date(data.at[data.at.length - 1]).toLocaleDateString("en-US", { timeZone: tz, month: "short", day: "numeric", year: "numeric" })}
             </time>
           </p>
-          <PortfolioChart tz={tz} data={data.at.map((at, i) => ({ at, totalValue: data.total[i], cash: data.cash[i] }))} />
+          <PortfolioChart tz={tz} data={chartData} />
         </Card>
         <div className="lg:col-span-4">{aside}</div>
       </div>

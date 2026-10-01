@@ -155,23 +155,40 @@ function StatChip({ label, value }: { label: string; value: string }) {
 
 function SymbolModal({ position, onClose }: { position: Position | null; onClose: () => void }) {
   const [details, setDetails] = useState<SymbolDetails | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [retry, setRetry] = useState(0);
   const symbol = position?.symbol ?? null;
 
   useEffect(() => {
     if (!symbol) return;
-    let cancelled = false;
-    // Textbook fetch-on-mount pattern; not worth a data-fetching library for one on-click call.
+    const controller = new AbortController();
+    // A keyed modal starts fresh per symbol; retries also discard the previous response.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
-    fetch(`/api/symbol/${symbol}`)
-      .then((r) => r.json())
-      .then((d) => !cancelled && setDetails(d))
-      .finally(() => !cancelled && setLoading(false));
-    return () => {
-      cancelled = true;
-    };
-  }, [symbol]);
+    setDetails(null);
+    setError(false);
+    fetch(`/api/symbol/${encodeURIComponent(symbol)}`, { signal: controller.signal })
+      .then(async (r) => {
+        if (!r.ok) throw new Error("Symbol details unavailable");
+        const d: SymbolDetails | null = await r.json();
+        if (d !== null) {
+          const numeric = [d.marketCap, d.peRatio, d.dividendYield, d.high52w, d.low52w, d.rsi];
+          const text = [d.sector, d.nextEarningsDate];
+          const ratings = d.analystRatings;
+          if (d.symbol !== symbol || numeric.some((v) => v !== null && !Number.isFinite(v))
+            || text.some((v) => v !== null && typeof v !== "string")
+            || (ratings !== null && (!ratings || ![ratings.buy, ratings.hold, ratings.sell].every(Number.isFinite)
+              || (ratings.priceTarget !== null && !Number.isFinite(ratings.priceTarget))))) {
+            throw new Error("Invalid symbol details");
+          }
+        }
+        if (!controller.signal.aborted) setDetails(d);
+      })
+      .catch(() => { if (!controller.signal.aborted) setError(true); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [symbol, retry]);
 
   return (
     <Modal.Root isOpen={!!symbol} onOpenChange={(open) => !open && onClose()}>
@@ -183,8 +200,17 @@ function SymbolModal({ position, onClose }: { position: Position | null; onClose
               {details?.sector && <p className="text-xs text-[var(--muted)]">{details.sector}</p>}
             </Modal.Header>
             <Modal.Body>
-              {loading && <p className="text-sm text-[var(--muted)]">Loading…</p>}
-              {!loading && details && position && (
+              {loading && <p role="status" className="text-sm text-[var(--muted)]">Loading…</p>}
+              {!loading && error && (
+                <div className="flex flex-col items-start gap-2">
+                  <p role="alert" className="text-sm text-[var(--danger)]">Could not load details for {symbol}.</p>
+                  <button type="button" onClick={() => setRetry((n) => n + 1)} className="rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--surface-hover)]">Retry</button>
+                </div>
+              )}
+              {!loading && !error && (!details || Object.entries(details).every(([key, value]) => key === "symbol" || value === null)) && (
+                <p className="text-sm text-[var(--muted)]">No additional details available for {symbol}.</p>
+              )}
+              {!loading && !error && details && position && (
                 <div className="flex flex-col gap-5">
                   {details.low52w && details.high52w && (
                     <div>
@@ -544,7 +570,7 @@ export function PositionsTable({
         </table>
       </div>
       <Pagination paging={paging} total={data.length} />
-      {enrichable && <SymbolModal position={openPosition} onClose={() => setOpenPosition(null)} />}
+      {enrichable && <SymbolModal key={openPosition?.symbol ?? "closed"} position={openPosition} onClose={() => setOpenPosition(null)} />}
     </>
   );
 }

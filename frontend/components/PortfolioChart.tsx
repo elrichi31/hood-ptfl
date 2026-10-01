@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { isRegular } from "@/lib/history";
 import { useWidth } from "@/lib/useWidth";
 
-type Snapshot = { totalValue: number; cash: number; at: string };
+type Snapshot = { totalValue: number; cash: number; at: string; pnl?: number };
 
 const L = 4;
 const T = 12;
@@ -84,7 +84,8 @@ export function PortfolioChart({ data, tz = "America/New_York" }: { data: Snapsh
       ? new Date(at).toLocaleTimeString("en-US", { timeZone: tz, hour: "numeric", minute: "2-digit" })
       : new Date(at).toLocaleDateString("en-US", { timeZone: tz, month: "short", day: "numeric" });
 
-  const h = hover !== null ? data[hover] : null;
+  const activeHover = hover !== null && hover < data.length ? hover : null;
+  const h = activeHover !== null ? data[activeHover] : null;
   const hChange = h ? h.totalValue - start : 0;
   const lastColor = regular[data.length - 1] ? REGULAR : EXTENDED;
 
@@ -143,10 +144,10 @@ export function PortfolioChart({ data, tz = "America/New_York" }: { data: Snapsh
           <path key={k} d={r.d} fill="none" stroke={r.color} strokeWidth={1.75} strokeLinejoin="round" strokeLinecap="round" />
         ))}
 
-        {hover !== null && (
+        {activeHover !== null && (
           <>
-            <line x1={x(hover)} x2={x(hover)} y1={T} y2={H - B} stroke="var(--muted)" strokeWidth={1} />
-            <circle cx={x(hover)} cy={y(values[hover])} r={4} fill={regular[hover] ? REGULAR : EXTENDED} stroke="var(--surface)" strokeWidth={2} />
+            <line x1={x(activeHover)} x2={x(activeHover)} y1={T} y2={H - B} stroke="var(--muted)" strokeWidth={1} />
+            <circle cx={x(activeHover)} cy={y(values[activeHover])} r={4} fill={regular[activeHover] ? REGULAR : EXTENDED} stroke="var(--surface)" strokeWidth={2} />
           </>
         )}
         <circle cx={x(data.length - 1)} cy={y(values[values.length - 1])} r={3.5} fill={lastColor} stroke="var(--surface)" strokeWidth={2} />
@@ -169,10 +170,16 @@ export function PortfolioChart({ data, tz = "America/New_York" }: { data: Snapsh
             transform: `translateX(${x(hover!) > W / 2 ? "calc(-100% - 10px)" : "10px"})`,
           }}
         >
-          <p className="font-figures font-mono text-sm font-semibold">{money(h.totalValue)}</p>
+          <p className="font-figures font-mono text-sm font-semibold">Portfolio value · {money(h.totalValue)}</p>
           <p className={`font-figures font-mono ${hChange >= 0 ? "text-[var(--success)]" : "text-[var(--danger)]"}`}>
-            {signed(hChange)} ({((hChange / start) * 100).toFixed(2)}%)
+            Balance change · {signed(hChange)} ({start > 0 ? `${((hChange / start) * 100).toFixed(2)}%` : "—"})
           </p>
+          {h.pnl !== undefined && Number.isFinite(h.pnl) && (
+            <p className={`font-figures font-mono ${h.pnl >= 0 ? "text-[var(--success)]" : "text-[var(--danger)]"}`}>
+              Adjusted P&amp;L · {signed(h.pnl)}
+            </p>
+          )}
+          <p className="text-[var(--muted)]">Since range start{h.pnl !== undefined && Number.isFinite(h.pnl) && " · P&L excludes deposits/withdrawals."}</p>
           <p className="text-[var(--muted)]">
             {new Date(h.at).toLocaleString("en-US", {
               timeZone: tz,
