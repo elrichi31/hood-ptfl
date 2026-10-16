@@ -78,6 +78,7 @@ export function PortfolioExplorer({
   tz: string;
 }) {
   const [range, setRange] = useState<RangeKey>("1D");
+  const [metric, setMetric] = useState<"portfolio" | "pnl">("portfolio");
   useEffect(() => {
     try {
       const stored = localStorage.getItem(RANGE_KEY);
@@ -95,6 +96,15 @@ export function PortfolioExplorer({
   }
   const history = useLiveHistory(saved);
   const data = useMemo(() => sliceRange(history, RANGES.find((r) => r.key === range)!.ms), [history, range]);
+  const chartData = useMemo(() => {
+    const points = [];
+    let pnl = 0;
+    for (let i = 0; i < data.at.length; i++) {
+      if (i > 0) pnl += stepPnl(data, i);
+      points.push({ at: data.at[i], totalValue: data.total[i], cash: data.cash[i], pnl });
+    }
+    return points;
+  }, [data]);
   const tabs = <RangeTabs value={range} onChange={chooseRange} />;
 
   if (history.at.length < 2) {
@@ -112,8 +122,10 @@ export function PortfolioExplorer({
   // 1D headline = Robinhood's "today" (same number as the Today card); longer ranges = range P&L.
   const change = range === "1D" ? robinhoodToday(history, tz).pnl : flowAdjustedPnl(data, 0);
   const split = splitPnl(data, 0);
-  const hi = Math.max(...data.total);
-  const lo = Math.min(...data.total);
+  const netGains = chartData[chartData.length - 1]?.pnl ?? 0;
+  const chartValues = metric === "pnl" ? chartData.map((p) => p.pnl) : data.total;
+  const hi = Math.max(...chartValues);
+  const lo = Math.min(...chartValues);
   // Max drawdown: worst peak-to-trough drop of the time-weighted index (compounded step returns),
   // so a withdrawal isn't a "drop" and a deposit isn't a new peak.
   let index = 1;
@@ -155,13 +167,27 @@ export function PortfolioExplorer({
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-        <Card title="Value over time" action={tabs} className="lg:col-span-8">
+        <Card title={metric === "pnl" ? "Net gains over time" : "Value over time"} action={tabs} className="lg:col-span-8">
+          <div role="group" aria-label="Chart metric" className="mb-3 inline-flex rounded-lg border border-[var(--border)] bg-[var(--surface)] p-0.5">
+            {([{ key: "portfolio", label: "Portfolio" }, { key: "pnl", label: "Net gains" }] as const).map((m) => (
+              <button
+                key={m.key}
+                type="button"
+                aria-pressed={metric === m.key}
+                onClick={() => setMetric(m.key)}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${metric === m.key ? "bg-[var(--surface-hover)] text-[var(--foreground)]" : "text-[var(--muted)] hover:text-[var(--foreground)]"}`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
           <div className="mb-1 flex flex-wrap items-baseline gap-x-2">
-            <span className="font-figures font-mono text-2xl font-semibold"><LiveNumber value={last} /></span>
-            <span className={`font-figures font-mono text-sm ${upDown(change)}`}>
-              {signedMoney(change)} ({signedPct(first ? (change / first) * 100 : 0)})
+            <span className={`font-figures font-mono text-2xl font-semibold ${metric === "pnl" ? upDown(netGains) : ""}`}><LiveNumber value={metric === "pnl" ? netGains : last} /></span>
+            <span className={`font-figures font-mono text-sm ${upDown(metric === "pnl" ? netGains : change)}`}>
+              {metric === "portfolio" ? `${signedMoney(change)} (${signedPct(first ? (change / first) * 100 : 0)})` : first ? signedPct((netGains / first) * 100) : "—"}
             </span>
           </div>
+          {metric === "pnl" && <p className="mb-2 text-xs text-[var(--muted)]">Since range start · Excludes deposits and withdrawals.</p>}
           <div className="font-figures mb-2 flex flex-wrap gap-x-4 gap-y-0.5 font-mono text-xs text-[var(--muted)]">
             <span>
               Market hours <span className={upDown(split.regular)}>{signedMoney(split.regular)}</span>
@@ -188,7 +214,7 @@ export function PortfolioExplorer({
               {new Date(data.at[data.at.length - 1]).toLocaleDateString("en-US", { timeZone: tz, month: "short", day: "numeric", year: "numeric" })}
             </time>
           </p>
-          <PortfolioChart tz={tz} data={data.at.map((at, i) => ({ at, totalValue: data.total[i], cash: data.cash[i] }))} />
+          <PortfolioChart tz={tz} data={chartData} metric={metric} />
         </Card>
         <div className="lg:col-span-4">{aside}</div>
       </div>
