@@ -157,19 +157,38 @@ function midnightIndex(at: string[], tz: string) {
  * securities vs the previous session's 4 PM ET close, crypto vs 12 AM in the viewer's time
  * zone, deposits/withdrawals excluded. `tz` is the viewer's IANA zone.
  */
-export function robinhoodToday(h: FullHist, tz: string) {
+export function robinhoodTodayHistory(h: FullHist, tz: string) {
   const n = h.at.length;
   const secBase = prevCloseIndex(h.at);
-  const cryptoBase = midnightIndex(h.at, tz);
+  const cryptoBase = n ? midnightIndex(h.at, tz) : 0;
+  const hasCrypto = Object.values(h.symbols).some((s) => s.type === "crypto");
+  const from = hasCrypto ? Math.min(secBase, cryptoBase) : secBase;
+  const path = Array<number>(n).fill(0);
   let securities = 0;
   let crypto = 0;
+  let regular = 0;
+  let extended = 0;
   for (let i = 1; i < n; i++) {
     const c = cryptoStep(h, i);
-    if (i > secBase) securities += stepPnl(h, i) - c;
-    if (i > cryptoBase) crypto += c;
+    const s = i > secBase ? stepPnl(h, i) - c : 0;
+    const eligibleCrypto = i > cryptoBase ? c : 0;
+    securities += s;
+    crypto += eligibleCrypto;
+    path[i] = securities + crypto;
+    const step = s + eligibleCrypto;
+    if (step) {
+      if (isRegular(h.at[i])) regular += step;
+      else extended += step;
+    }
   }
   const base = h.total[secBase];
-  return { pnl: securities + crypto, securities, crypto, pct: base ? ((securities + crypto) / base) * 100 : null };
+  return { pnl: securities + crypto, securities, crypto, pct: base ? ((securities + crypto) / base) * 100 : null, from, path, split: { regular, extended } };
+}
+
+/** Keep the Today card's existing contract; the chart consumes the same calculation's path. */
+export function robinhoodToday(h: FullHist, tz: string) {
+  const { pnl, securities, crypto, pct } = robinhoodTodayHistory(h, tz);
+  return { pnl, securities, crypto, pct };
 }
 
 /**

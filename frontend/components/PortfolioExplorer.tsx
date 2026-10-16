@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Card } from "@/components/Card";
 import { PortfolioChart } from "@/components/PortfolioChart";
-import { flowAdjustedPnl, prevCloseIndex, robinhoodToday, splitPnl, stepPnl } from "@/lib/history";
+import { flowAdjustedPnl, prevCloseIndex, robinhoodTodayHistory, splitPnl, stepPnl } from "@/lib/history";
 import { useLiveHistory } from "@/components/LivePrices";
 import { LiveNumber } from "@/components/LiveNumber";
 
@@ -30,11 +30,11 @@ const signedPct = (n: number) => `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
 const upDown = (n: number) => (n >= 0 ? "text-[var(--success)]" : "text-[var(--danger)]");
 
 /** Slices every aligned array to the snapshots inside the range (relative to the latest one). */
-function sliceRange(h: PositionHistory, ms: number) {
+function sliceRange(h: PositionHistory, ms: number, todayFrom?: number) {
   const times = h.at.map((t) => new Date(t).getTime());
   const cutoff = times[times.length - 1] - ms;
-  // 1D starts at the previous session's close (same base as the Today card), not a rolling 24h.
-  const from = ms === 864e5 ? prevCloseIndex(h.at) : Math.max(0, times.findIndex((t) => t >= cutoff));
+  // 1D includes both Today baselines: securities' previous close and crypto's local midnight.
+  const from = ms === 864e5 ? todayFrom ?? prevCloseIndex(h.at) : Math.max(0, times.findIndex((t) => t >= cutoff));
   const sl = <T,>(a: T[]) => a.slice(from);
   return {
     at: sl(h.at),
@@ -95,16 +95,18 @@ export function PortfolioExplorer({
     catch { /* Keep selection usable even when persistence is unavailable. */ }
   }
   const history = useLiveHistory(saved);
-  const data = useMemo(() => sliceRange(history, RANGES.find((r) => r.key === range)!.ms), [history, range]);
+  const today = useMemo(() => robinhoodTodayHistory(history, tz), [history, tz]);
+  const data = useMemo(() => sliceRange(history, RANGES.find((r) => r.key === range)!.ms, today.from), [history, range, today.from]);
   const chartData = useMemo(() => {
     const points = [];
     let pnl = 0;
     for (let i = 0; i < data.at.length; i++) {
-      if (i > 0) pnl += stepPnl(data, i);
+      if (range === "1D") pnl = today.path[today.from + i];
+      else if (i > 0) pnl += stepPnl(data, i);
       points.push({ at: data.at[i], totalValue: data.total[i], cash: data.cash[i], pnl });
     }
     return points;
-  }, [data]);
+  }, [data, range, today]);
   const tabs = <RangeTabs value={range} onChange={chooseRange} />;
 
   if (history.at.length < 2) {
@@ -120,9 +122,10 @@ export function PortfolioExplorer({
   const first = data.total[0] ?? 0;
   const last = data.total[data.total.length - 1] ?? 0;
   // 1D headline = Robinhood's "today" (same number as the Today card); longer ranges = range P&L.
-  const change = range === "1D" ? robinhoodToday(history, tz).pnl : flowAdjustedPnl(data, 0);
-  const split = splitPnl(data, 0);
+  const change = range === "1D" ? today.pnl : flowAdjustedPnl(data, 0);
+  const split = range === "1D" ? today.split : splitPnl(data, 0);
   const netGains = chartData[chartData.length - 1]?.pnl ?? 0;
+  const changePct = range === "1D" ? today.pct : first ? (change / first) * 100 : null;
   const chartValues = metric === "pnl" ? chartData.map((p) => p.pnl) : data.total;
   const hi = Math.max(...chartValues);
   const lo = Math.min(...chartValues);
@@ -132,7 +135,7 @@ export function PortfolioExplorer({
   let peak = 1;
   let drawdown = 0;
   for (let i = 1; i < data.total.length; i++) {
-    if (data.total[i - 1]) index *= 1 + stepPnl(data, i) / data.total[i - 1];
+    if (data.total[i - 1]) index *= 1 + (chartData[i].pnl - chartData[i - 1].pnl) / data.total[i - 1];
     peak = Math.max(peak, index);
     drawdown = Math.min(drawdown, index / peak - 1);
   }
@@ -184,7 +187,7 @@ export function PortfolioExplorer({
           <div className="mb-1 flex flex-wrap items-baseline gap-x-2">
             <span className={`font-figures font-mono text-2xl font-semibold ${metric === "pnl" ? upDown(netGains) : ""}`}><LiveNumber value={metric === "pnl" ? netGains : last} /></span>
             <span className={`font-figures font-mono text-sm ${upDown(metric === "pnl" ? netGains : change)}`}>
-              {metric === "portfolio" ? `${signedMoney(change)} (${signedPct(first ? (change / first) * 100 : 0)})` : first ? signedPct((netGains / first) * 100) : "—"}
+              {metric === "portfolio" ? `${signedMoney(change)} (${changePct !== null ? signedPct(changePct) : "—"})` : changePct !== null ? signedPct(changePct) : "—"}
             </span>
           </div>
           {metric === "pnl" && <p className="mb-2 text-xs text-[var(--muted)]">Since range start · Excludes deposits and withdrawals.</p>}
