@@ -2,6 +2,7 @@ import { DateTime } from 'luxon'
 import logger from '@adonisjs/core/services/logger'
 import NewsArticle from '#models/news_article'
 import { heldPositions } from '#services/poller'
+import { cacheAsync } from '#services/async_cache'
 import {
   fetchFinnhubNews,
   fetchFinnhubGeneralNews,
@@ -395,7 +396,9 @@ const MIN_RELEVANCE = 20
 const MAX_EVENTS = 40
 
 /** Reads the last few days of stored articles, clusters them into events, and scores them against the live portfolio. */
-export async function getNewsFeed(): Promise<NewsFeedOut> {
+export const getNewsFeed = cacheAsync(buildNewsFeed, 60_000)
+
+async function buildNewsFeed(): Promise<NewsFeedOut> {
   const since = DateTime.now().minus({ days: FEED_LOOKBACK_DAYS }).toJSDate()
   const rows = await NewsArticle.query()
     .where('publishedAt', '>=', since)

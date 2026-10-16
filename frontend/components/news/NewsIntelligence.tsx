@@ -213,7 +213,7 @@ function TickerTape({ events, holdings }: { events: NewsEvent[]; holdings: Holdi
   );
 }
 
-export function NewsIntelligence({ feed, holdings = {} }: { feed: NewsFeed; holdings?: Holdings }) {
+export function NewsIntelligence({ feed, holdings = {}, holdingsLoading = false, holdingsUnavailable = false }: { feed: NewsFeed; holdings?: Holdings; holdingsLoading?: boolean; holdingsUnavailable?: boolean }) {
   const [filter, setFilter] = useState<NewsFilter>("all");
   const [ticker, setTicker] = useState("all");
   const [source, setSource] = useState("all");
@@ -396,7 +396,7 @@ export function NewsIntelligence({ feed, holdings = {} }: { feed: NewsFeed; hold
 
           <Card title="Holdings pulse">
             {!pulse.length ? (
-              <p className="text-sm text-[var(--muted)]">No news on your holdings yet.</p>
+              <p className="text-sm text-[var(--muted)]">{holdingsLoading ? "Loading portfolio indicators…" : holdingsUnavailable ? "Portfolio indicators are unavailable." : "No news on your holdings yet."}</p>
             ) : (
               <div className="flex flex-col">
                 {pulse.map((h) => (

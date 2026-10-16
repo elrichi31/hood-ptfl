@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import { Suspense } from "react";
 import { viewerTz } from "@/lib/tz";
 import { Wallet, TrendingUp, CalendarDays, PiggyBank } from "lucide-react";
 import { redirect } from "next/navigation";
@@ -7,7 +8,7 @@ import {
   PortfolioExplorer,
   type PositionHistory,
 } from "@/components/PortfolioExplorer";
-import { PositionsTable } from "@/components/PositionsTable";
+import { DeferredHoldings, HoldingsTables } from "@/components/DeferredHoldings";
 import { DailyPnlChart, type DailyPnl } from "@/components/DailyPnlChart";
 import { AllocationChart, TopMoversChart } from "@/components/AnalysisCharts";
 import { auth } from "@/lib/auth";
@@ -160,7 +161,6 @@ export default async function Home() {
     historyResult,
     positionsResult,
     dailyResult,
-    referencesResult,
   ] = await Promise.all([
     load<Latest>(
       "/api/v1/latest",
@@ -228,19 +228,7 @@ export default async function Home() {
             nullableNumber(s.pct),
         ),
     ),
-    load<Record<string, Record<string, number>>>(
-      "/api/v1/history/references",
-      (d) =>
-        typeof d === "object" &&
-        !Array.isArray(d) &&
-        Object.values(d).every(
-          (s) =>
-            s &&
-            typeof s === "object" &&
-            !Array.isArray(s) &&
-            Object.values(s).every(Number.isFinite),
-        ),
-    ),
+
   ]);
   const latest = latestResult.data;
   const history = historyResult.data;
@@ -265,7 +253,6 @@ export default async function Home() {
     historyResult,
     positionsResult,
     dailyResult,
-    referencesResult,
   ].some((r) => r.error);
   const portfolioError = latestResult.error ?? "Portfolio data unavailable.";
   const historyError =
@@ -465,38 +452,16 @@ export default async function Home() {
         </div>
 
         <div className="mt-4 flex flex-col gap-4">
-          {(positionsResult.error || referencesResult.error) && (
-            <p role="alert" className="text-sm text-[var(--muted)]">
-              Position returns are partially unavailable:{" "}
-              {positionsResult.error ?? referencesResult.error}
-            </p>
+          {positions ? (
+            <Suspense fallback={<HoldingsTables positions={positions} history={posHistory ?? undefined} tz={tz} historyError={positionsResult.error} pending />}>
+              <DeferredHoldings positions={positions} history={posHistory ?? undefined} tz={tz} historyError={positionsResult.error} />
+            </Suspense>
+          ) : (
+            <>
+              <Card title="Stocks & ETFs"><SectionError message={portfolioError} /></Card>
+              <Card title="Crypto"><SectionError message={portfolioError} /></Card>
+            </>
           )}
-          <Card title="Stocks & ETFs">
-            {positions ? (
-              <PositionsTable
-                rows={positions.equities}
-                history={posHistory ?? undefined}
-                references={referencesResult.data ?? undefined}
-                tz={tz}
-                enrichable
-              />
-            ) : (
-              <SectionError message={portfolioError} />
-            )}
-          </Card>
-          <Card title="Crypto">
-            {positions ? (
-              <PositionsTable
-                rows={positions.crypto}
-                history={posHistory ?? undefined}
-                references={referencesResult.data ?? undefined}
-                tz={tz}
-                crypto
-              />
-            ) : (
-              <SectionError message={portfolioError} />
-            )}
-          </Card>
         </div>
       </main>
     </LivePricesProvider>

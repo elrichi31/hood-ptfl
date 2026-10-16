@@ -74,7 +74,15 @@ export function priceContext(h: Hist | undefined, symbol: string) {
     }
   }
   const since = new Date(h.at[h.at.length - 1]).getTime() - 7 * 864e5;
-  const week = s.price.filter((p, i): p is number => p != null && new Date(h.at[i]).getTime() >= since);
+  // Snapshots are chronological: locate the week boundary before touching price arrays.
+  let from = 0;
+  let end = h.at.length;
+  while (from < end) {
+    const mid = Math.floor((from + end) / 2);
+    if (Date.parse(h.at[mid]) < since) from = mid + 1;
+    else end = mid;
+  }
+  const week = s.price.slice(from).filter((p): p is number => p != null);
   // ponytail: stride-sample to ~60 points; plenty for a 96px sparkline.
   const step = Math.ceil(week.length / 60) || 1;
   return { prevClose, week: week.filter((_, i) => i % step === 0 || i === week.length - 1) };
@@ -168,7 +176,8 @@ export function robinhoodTodayHistory(h: FullHist, tz: string) {
   let crypto = 0;
   let regular = 0;
   let extended = 0;
-  for (let i = 1; i < n; i++) {
+  // No contribution before either current-day baseline can affect Today.
+  for (let i = from + 1; i < n; i++) {
     const c = cryptoStep(h, i);
     const s = i > secBase ? stepPnl(h, i) - c : 0;
     const eligibleCrypto = i > cryptoBase ? c : 0;

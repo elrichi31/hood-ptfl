@@ -16,6 +16,10 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/components/PortfolioExplorer", () => ({
   PortfolioExplorer: () => <div>Portfolio chart available</div>,
 }));
+vi.mock("@/components/DeferredHoldings", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/components/DeferredHoldings")>();
+  return { ...actual, DeferredHoldings: (props: Parameters<typeof actual.HoldingsTables>[0]) => <actual.HoldingsTables {...props} /> };
+});
 vi.mock("@/components/DailyPnlChart", () => ({
   DailyPnlChart: () => <div>Daily chart available</div>,
 }));
