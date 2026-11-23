@@ -16,8 +16,13 @@ export default async function DiscoverPage() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) redirect("/login");
 
-  const res = await backend("/api/v1/discover");
-  const d: Discover = res.ok ? await res.json() : { status: "idle", builtAt: null, items: [], portfolio: null };
+  const empty: Discover = { status: "idle", builtAt: null, items: [], portfolio: null };
+  let d: Discover = empty;
+  try {
+    const res = await backend("/api/v1/discover");
+    if (res.ok) d = await res.json();
+  } catch { /* Slow or unreachable backend: show the empty state rather than crashing the route. */ }
+  if (!Array.isArray(d.items)) d = empty;
   const diversifiers = d.items.filter((i) => i.fit && i.fit.deltaVolAt5 < 0).length;
 
   return (

@@ -1,3 +1,5 @@
+import { mkdirSync, readFileSync } from 'node:fs'
+import { rename, writeFile } from 'node:fs/promises'
 import logger from '@adonisjs/core/services/logger'
 import env from '#start/env'
 import { heldPositions } from '#services/poller'
@@ -41,7 +43,10 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 async function fh(path: string): Promise<any | null> {
   await sleep(CALL_GAP_MS)
   try {
-    const res = await trackedFetch('finnhub', `https://finnhub.io/api/v1${path}&token=${env.get('FINNHUB_API_KEY')}`)
+    const res = await trackedFetch(
+      'finnhub',
+      `https://finnhub.io/api/v1${path}&token=${env.get('FINNHUB_API_KEY')}`
+    )
     return res.ok ? await res.json() : null
   } catch {
     return null
@@ -85,24 +90,73 @@ export function foldTrades(rows: any[], since: string): InsiderTrade[] {
   })
 }
 
-// ponytail: in-memory 6h cache — Form 4s land at most a few times a day per company.
-type Activity = { trades: InsiderTrade[]; summary: InsiderSummary[] }
-// ponytail: in memory, so a restart re-dates recent filings to boot time (the bell may re-ring once).
+type Activity = { trades: InsiderTrade[]; summary: InsiderSummary[]; pending?: boolean }
+const FRESH_MS = 6 * 3600e3 // Form 4s land at most a few times a day per company
+const EMPTY_RETRY_MS = 5 * 60e3 // an empty build (provider down / rate limited) is retried soon
+const PERSISTED_MAX_AGE_MS = 24 * 3600e3
+const INSIDERS_FILE = 'tmp/insiders.json'
+// A cold build is ~45 sequential, rate-spaced Finnhub calls (tens of seconds). Callers wait this long
+// for it, then get a "pending" answer instead of hanging until their own deadline.
+const COLD_WAIT_MS = 6_000
+
+// In memory, but seeded from disk so a restart neither re-dates old filings (the bell would re-ring)
+// nor leaves the Alerts page empty while the first build runs.
 const seenAt = new Map<string, string>()
-let cache: { at: number; data: Activity } | null = null
+const tradeKey = (t: InsiderTrade) => `${t.symbol}|${t.name}|${t.side}|${t.date}|${t.shares}`
+
+function loadPersisted(): { at: number; data: Activity } | null {
+  try {
+    const file = JSON.parse(readFileSync(INSIDERS_FILE, 'utf8')) as { at: number; data: Activity }
+    if (!Array.isArray(file.data?.trades) || !Array.isArray(file.data?.summary)) return null
+    if (Date.now() - file.at > PERSISTED_MAX_AGE_MS) return null
+    for (const t of file.data.trades) if (t.seenAt) seenAt.set(tradeKey(t), t.seenAt)
+    return file
+  } catch {
+    return null
+  }
+}
+
+async function persist(entry: { at: number; data: Activity }) {
+  try {
+    mkdirSync('tmp', { recursive: true })
+    await writeFile(`${INSIDERS_FILE}.tmp`, JSON.stringify(entry))
+    await rename(`${INSIDERS_FILE}.tmp`, INSIDERS_FILE)
+  } catch (err) {
+    logger.warn({ err }, '[insiders] could not persist cache')
+  }
+}
+
+let cache: { at: number; data: Activity } | null = loadPersisted()
 let inflight: Promise<Activity> | null = null
 
-/** Cached; concurrent callers (the Alerts page + the bell) share one build instead of racing two. */
-export function getInsiderActivity(): Promise<Activity> {
-  if (cache && Date.now() - cache.at < 6 * 3600e3) return Promise.resolve(cache.data)
+const refresh = () => {
   inflight ??= build().finally(() => (inflight = null))
   return inflight
+}
+
+/**
+ * Stale-while-revalidate: anything cached is served immediately (a stale copy also kicks a refresh
+ * in the background). Only with nothing cached at all does the caller wait, and then only briefly.
+ * Concurrent callers (the Alerts page + the bell) share one build instead of racing two.
+ */
+export function getInsiderActivity(): Promise<Activity> {
+  if (cache) {
+    const age = Date.now() - cache.at
+    const ttl = cache.data.summary.length ? FRESH_MS : EMPTY_RETRY_MS
+    if (age >= ttl) refresh().catch((err) => logger.error({ err }, '[insiders] refresh failed'))
+    return Promise.resolve(cache.data)
+  }
+  const pending = new Promise<Activity>((resolve) =>
+    setTimeout(() => resolve({ trades: [], summary: [], pending: true }), COLD_WAIT_MS).unref?.()
+  )
+  return Promise.race([refresh(), pending])
 }
 
 /** Warm at boot and every 6h, so page loads never wait on ~40 Finnhub calls. */
 export function startInsiders() {
   if (!env.get('FINNHUB_API_KEY')) return
-  const warm = () => getInsiderActivity().catch((err) => logger.error({ err }, '[insiders] build failed'))
+  const warm = () =>
+    getInsiderActivity().catch((err) => logger.error({ err }, '[insiders] build failed'))
   warm()
   setInterval(warm, 6 * 3600e3 + 60_000)
 }
@@ -117,14 +171,20 @@ async function build(): Promise<Activity> {
   const summary: InsiderSummary[] = []
 
   for (const symbol of symbols) {
-    const tx = await fh(`/stock/insider-transactions?symbol=${encodeURIComponent(symbol)}&from=${since}`)
+    const tx = await fh(
+      `/stock/insider-transactions?symbol=${encodeURIComponent(symbol)}&from=${since}`
+    )
     const rows = Array.isArray(tx?.data) ? tx.data : []
     if (!rows.length) continue // ETFs and funds have no insiders — skip the sentiment call too
     const mine = foldTrades(rows, since)
     trades.push(...mine)
 
-    const sent = await fh(`/stock/insider-sentiment?symbol=${encodeURIComponent(symbol)}&from=${since}&to=${ymd(new Date())}`)
-    const months = (Array.isArray(sent?.data) ? sent.data : []).filter((m: any) => Number.isFinite(m.mspr))
+    const sent = await fh(
+      `/stock/insider-sentiment?symbol=${encodeURIComponent(symbol)}&from=${since}&to=${ymd(new Date())}`
+    )
+    const months = (Array.isArray(sent?.data) ? sent.data : []).filter((m: any) =>
+      Number.isFinite(m.mspr)
+    )
     const buys = mine.filter((t) => t.side === 'buy')
     const sells = mine.filter((t) => t.side === 'sell')
     summary.push({
@@ -133,13 +193,15 @@ async function build(): Promise<Activity> {
       sold: sells.reduce((s, t) => s + t.value, 0),
       buyers: new Set(buys.map((t) => t.name)).size,
       sellers: new Set(sells.map((t) => t.name)).size,
-      mspr: months.length ? months.reduce((s: number, m: any) => s + m.mspr, 0) / months.length : null,
+      mspr: months.length
+        ? months.reduce((s: number, m: any) => s + m.mspr, 0) / months.length
+        : null,
     })
   }
 
   const now = new Date().toISOString()
   for (const t of trades) {
-    const key = `${t.symbol}|${t.name}|${t.side}|${t.date}|${t.shares}`
+    const key = tradeKey(t)
     if (!seenAt.has(key)) seenAt.set(key, now)
     t.seenAt = seenAt.get(key)
   }
@@ -147,7 +209,12 @@ async function build(): Promise<Activity> {
     trades: trades.sort((a, b) => b.date.localeCompare(a.date) || b.value - a.value),
     summary: summary.sort((a, b) => b.bought - b.sold - (a.bought - a.sold)),
   }
-  if (summary.length) cache = { at: Date.now(), data }
+  // An empty result is cached too (short TTL, see getInsiderActivity) so a provider outage can't
+  // trigger a fresh 45-call build on every request. It never replaces a good copy, though.
+  if (summary.length || !cache?.data.summary.length) {
+    cache = { at: Date.now(), data }
+    void persist(cache)
+  }
   logger.info(`[insiders] ${trades.length} trades across ${summary.length} stocks`)
   return data
 }

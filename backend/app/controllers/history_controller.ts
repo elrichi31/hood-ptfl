@@ -6,7 +6,8 @@ import { getDailyPnl } from '#services/daily_pnl'
 import { getReferencePrices } from '#services/enrichment'
 import { sqlTime } from '#services/sql_time'
 
-let positionsCache: { key: string; body: unknown } | null = null
+const positionsCache = new Map<number, { key: string; body: unknown }>()
+const MAX_DAYS = 90
 
 const FULL_RESOLUTION_MS = 7 * 24 * 3600e3
 const HOUR_MS = 3600e3
@@ -105,18 +106,30 @@ export default class HistoryController {
    * Ships the whole window and lets the client slice by range; snapshots older than a week are
    * thinned to hourly (see thinSnapshots) so the payload stays small.
    */
-  async positions({ response }: HttpContext) {
+  async positions({ request, response }: HttpContext) {
+    // `days` lets callers that only need recent prices (the News page) skip the 90-day payload.
+    const rawDays = request.qs().days
+    const days = rawDays === undefined ? MAX_DAYS : Number(rawDays)
+    if (
+      (rawDays !== undefined && (typeof rawDays !== 'string' || !/^\d{1,3}$/.test(rawDays))) ||
+      !Number.isSafeInteger(days) ||
+      days < 1 ||
+      days > MAX_DAYS
+    ) {
+      return response.badRequest({ error: `days must be an integer between 1 and ${MAX_DAYS}` })
+    }
     const snapshots = await PortfolioSnapshot.query()
-      .where('createdAt', '>=', sqlTime(DateTime.now().minus({ days: 90 })))
+      .where('createdAt', '>=', sqlTime(DateTime.now().minus({ days })))
       .orderBy('created_at', 'asc')
     if (!snapshots.length) return response.ok({ at: [], total: [], cash: [], symbols: {} })
 
     // Only changes when the poller saves a snapshot, so reuse the last build until then.
     const key = `${snapshots.length}:${snapshots[snapshots.length - 1].id}`
-    if (positionsCache?.key !== key) {
-      positionsCache = { key, body: await buildPositions(thinSnapshots(snapshots)) }
-    }
-    return response.ok(positionsCache.body)
+    const cached = positionsCache.get(days)
+    if (cached?.key === key) return response.ok(cached.body)
+    const body = await buildPositions(thinSnapshots(snapshots))
+    positionsCache.set(days, { key, body })
+    return response.ok(body)
   }
 
   /** Market P&L per ET day (see #services/daily_pnl). */

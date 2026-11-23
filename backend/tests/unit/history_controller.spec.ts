@@ -108,3 +108,27 @@ test.group('history: thinSnapshots', () => {
     assert.deepEqual(thinSnapshots(one, NOW), one)
   })
 })
+
+test.group('history positions: days window', (group) => {
+  group.each.teardown(() => mock.restoreAll())
+
+  test('rejects invalid days before querying snapshots', async ({ assert }) => {
+    for (const days of ['0', '91', '-1', '1.5', 'abc', '', ['3'], { n: 3 }]) {
+      const query = mock.method(PortfolioSnapshot, 'query', () => {
+        throw new Error('must not query')
+      })
+      let status = 0
+      const context = {
+        request: { qs: () => ({ days }) },
+        response: {
+          ok: () => (status = 200),
+          badRequest: () => (status = 400),
+        },
+      } as unknown as HttpContext
+      await new HistoryController().positions(context)
+      assert.equal(status, 400, `days ${JSON.stringify(days)} must return 400`)
+      assert.equal(query.mock.callCount(), 0)
+      query.mock.restore()
+    }
+  })
+})

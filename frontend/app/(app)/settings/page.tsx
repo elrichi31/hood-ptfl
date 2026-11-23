@@ -33,8 +33,12 @@ export default async function Settings() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) redirect("/login");
 
-  const res = await backend("/api/v1/usage");
-  const usage: Usage[] = res.ok ? await res.json() : [];
+  let usage: Usage[] = [];
+  try {
+    const res = await backend("/api/v1/usage");
+    if (res.ok) usage = await res.json();
+  } catch { /* Usage is informational; render the page without it. */ }
+  if (!Array.isArray(usage)) usage = [];
 
   return (
     <main className="mx-auto w-full max-w-[760px] flex-1 px-4 pt-6 pb-24 sm:px-6 sm:pt-16">

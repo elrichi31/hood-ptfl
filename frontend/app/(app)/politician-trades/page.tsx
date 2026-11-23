@@ -24,8 +24,12 @@ export default async function PoliticianTrades() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) redirect("/login");
 
-  const res = await backend("/api/v1/politician-trades");
-  const trades: Trade[] = res.ok ? await res.json() : [];
+  let trades: Trade[] = [];
+  try {
+    const res = await backend("/api/v1/politician-trades");
+    if (res.ok) trades = await res.json();
+  } catch { /* Fall through to the empty list instead of crashing the route. */ }
+  if (!Array.isArray(trades)) trades = [];
 
   return (
     <>

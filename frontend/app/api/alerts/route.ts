@@ -12,16 +12,26 @@ export async function GET(req: NextRequest) {
   if (!(await auth.api.getSession({ headers: req.headers }))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const [newsRes, insidersRes] = await Promise.all([backend("/api/v1/news"), backend("/api/v1/insiders")]);
+  // The bell is decorative: if news or insiders is slow or down, show whatever the other one has
+  // (or nothing) instead of failing the request and spamming the server log with timeouts.
+  const [newsRes, insidersRes] = await Promise.allSettled([backend("/api/v1/news"), backend("/api/v1/insiders")]);
+  const okJson = async <T,>(r: PromiseSettledResult<Response>): Promise<T | null> => {
+    if (r.status !== "fulfilled" || !r.value.ok) return null;
+    try {
+      return (await r.value.json()) as T;
+    } catch {
+      return null;
+    }
+  };
   const since = Date.now() - 864e5;
   const recent = (iso: string) => new Date(iso).getTime() >= since;
 
-  const feed: NewsFeed | null = newsRes.ok ? await newsRes.json() : null;
+  const feed = await okJson<NewsFeed>(newsRes);
   const news: Item[] = (feed?.events ?? [])
     .filter((e) => e.alert === "now" && recent(e.publishedAt))
     .map((e) => ({ id: e.id, headline: e.headline, tickers: e.tickers, publishedAt: e.publishedAt, url: e.sources[0]?.url }));
 
-  const activity: InsiderActivity | null = insidersRes.ok ? await insidersRes.json() : null;
+  const activity = await okJson<InsiderActivity>(insidersRes);
   // seenAt = when the backend first saw the filing; the filing date guards against a restart re-dating old ones.
   const twoDaysAgo = new Date(Date.now() - 2 * 864e5).toISOString().slice(0, 10);
   const insiders: Item[] = (activity?.trades ?? [])

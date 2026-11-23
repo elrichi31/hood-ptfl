@@ -12,10 +12,11 @@ import { backend } from "@/lib/backend";
 
 type Position = { symbol: string; price: number; value: number; prevClose?: number; prevCloseDate?: string };
 
+// Today's moves only need the last few days of prices (long enough to span a weekend), not the 90-day series.
 async function loadHoldings(): Promise<Holdings | null> {
   try {
     const [latestRes, histRes, tz] = await Promise.all([
-      backend("/api/v1/latest"), backend("/api/v1/history/positions"), viewerTz(),
+      backend("/api/v1/latest"), backend("/api/v1/history/positions?days=5"), viewerTz(),
     ]);
     if (!latestRes.ok || !histRes.ok) return null;
     const [latest, hist]: [{ positions: Record<string, Position[]> }, Hist] = await Promise.all([latestRes.json(), histRes.json()]);

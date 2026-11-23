@@ -11,6 +11,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ symb
   if (!/^[A-Za-z.]{1,6}$/.test(symbol)) {
     return NextResponse.json({ error: "Invalid symbol" }, { status: 400 });
   }
-  const res = await backend(`/api/v1/risk/returns/${encodeURIComponent(symbol.toUpperCase())}`);
-  return new NextResponse(await res.text(), { status: res.status, headers: { "content-type": "application/json" } });
+  try {
+    const res = await backend(`/api/v1/risk/returns/${encodeURIComponent(symbol.toUpperCase())}`);
+    return new NextResponse(await res.text(), { status: res.status, headers: { "content-type": "application/json" } });
+  } catch {
+    return NextResponse.json({ error: "Price history unavailable" }, { status: 504 });
+  }
 }

@@ -13,10 +13,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ symb
   if (!/^[A-Za-z0-9.\-]{1,12}$/.test(symbol)) {
     return NextResponse.json({ error: "Invalid symbol" }, { status: 400 });
   }
-  const res = await backend(`/api/v1/symbol/${encodeURIComponent(symbol)}`);
-  const body = await res.text();
-  return new NextResponse(body, {
-    status: res.status,
-    headers: { "content-type": "application/json" },
-  });
+  try {
+    const res = await backend(`/api/v1/symbol/${encodeURIComponent(symbol)}`);
+    const body = await res.text();
+    return new NextResponse(body, {
+      status: res.status,
+      headers: { "content-type": "application/json" },
+    });
+  } catch {
+    return NextResponse.json({ error: "Symbol data unavailable" }, { status: 504 });
+  }
 }

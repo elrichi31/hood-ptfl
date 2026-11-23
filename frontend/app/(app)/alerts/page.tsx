@@ -94,6 +94,16 @@ async function InsiderAlerts() {
     if (res.ok) insiders = await res.json();
   } catch { /* Report this section's fetch failure below. */ }
   if (!insiders || !Array.isArray(insiders.trades)) return <SectionError label="insider trades" />;
+  if (insiders.pending) {
+    return (
+      <Card className="mt-8">
+        <div role="status" className="flex items-center gap-3 text-sm text-[var(--muted)]">
+          Insider trades are still being collected. This takes about a minute after a restart.
+          <DashboardRetry />
+        </div>
+      </Card>
+    );
+  }
   return (
       <section className="mt-8">
         <h2 className="mb-3 text-sm font-medium text-[var(--secondary-foreground)]">

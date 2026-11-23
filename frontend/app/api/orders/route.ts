@@ -7,8 +7,12 @@ export async function GET(req: NextRequest) {
   if (!(await auth.api.getSession({ headers: req.headers }))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const res = await backend("/api/v1/latest");
-  if (!res.ok) return NextResponse.json({ orders: [] });
-  const { orders } = await res.json();
-  return NextResponse.json({ orders: orders ?? [] });
+  try {
+    const res = await backend("/api/v1/latest");
+    if (!res.ok) return NextResponse.json({ orders: [] });
+    const { orders } = await res.json();
+    return NextResponse.json({ orders: orders ?? [] });
+  } catch {
+    return NextResponse.json({ orders: [] });
+  }
 }

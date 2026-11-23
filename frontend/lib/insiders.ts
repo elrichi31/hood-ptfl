@@ -20,7 +20,8 @@ export type InsiderSummary = {
   mspr: number | null;
 };
 
-export type InsiderActivity = { trades: InsiderTrade[]; summary: InsiderSummary[] };
+/** `pending`: the backend is still building its first copy (a few tens of seconds after a restart). */
+export type InsiderActivity = { trades: InsiderTrade[]; summary: InsiderSummary[]; pending?: boolean };
 
 /** The company's Form 4 filings on SEC EDGAR (it accepts a ticker as CIK). */
 export const edgarForm4 = (symbol: string) =>
