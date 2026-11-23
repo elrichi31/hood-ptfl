@@ -2,7 +2,7 @@ import { expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import News from "@/app/(app)/news/page";
 import { backend } from "@/lib/backend";
-import { getMockNewsFeed } from "@/lib/news";
+import { mockEvents, pageFrom } from "./newsFixtures";
 
 vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn(), useRouter: () => ({ refresh: vi.fn() }) }));
@@ -14,7 +14,7 @@ it("shows interactive news before history completes, then enriches without reset
   let release!: (r: Response) => void;
   const history = new Promise<Response>((resolve) => { release = resolve; });
   vi.mocked(backend).mockImplementation(async (path) => {
-    if (path.endsWith("/news")) return Response.json(getMockNewsFeed());
+    if (path.startsWith("/api/v1/news/page")) return Response.json(pageFrom(mockEvents()));
     if (path.endsWith("/latest")) return Response.json({ positions: { equities: [{ symbol: "MSTR", price: 110, value: 110, prevClose: 100, prevCloseDate: "2020-01-01" }], crypto: [] } });
     return history;
   });
@@ -36,7 +36,7 @@ it("shows interactive news before history completes, then enriches without reset
 
 it.each(["http", "network", "json"])("keeps the feed usable when portfolio enrichment fails with %s", async (failure) => {
   vi.mocked(backend).mockImplementation(async (path) => {
-    if (path.endsWith("/news")) return Response.json(getMockNewsFeed());
+    if (path.startsWith("/api/v1/news/page")) return Response.json(pageFrom(mockEvents()));
     if (failure === "network") throw new TypeError("offline");
     return failure === "http" ? new Response(null, { status: 503 }) : new Response("not JSON");
   });
@@ -57,13 +57,11 @@ it("shows a retry rather than demo news when the feed request fails", async () =
 
 it("never substitutes demo headlines when the portfolio has no news", async () => {
   vi.mocked(backend).mockImplementation(async (path) => {
-    if (path.endsWith("/news")) {
-      return Response.json({ events: [], portfolioCoverage: { covered: 0, total: 22 }, aiMarketBrief: "", upcomingEvents: [] });
-    }
+    if (path.startsWith("/api/v1/news/page")) return Response.json(pageFrom([]));
     return new Response(null, { status: 503 });
   });
   render(await News());
   expect(screen.getByText("News Intelligence")).toBeTruthy();
   expect(screen.queryByText(/Bitcoin drops 6%/)).toBeNull();
-  expect(screen.getByText("0 / 22 positions")).toBeTruthy();
+  expect(screen.getByText(/No news for your holdings yet/)).toBeTruthy();
 });

@@ -25,7 +25,8 @@ export interface NewsEvent {
   alert?: "now" | "digest" | "ignore" | null;
   publishedAt: string;
   description: string;
-  aiSummary: string;
+  /** Not sent by the paged endpoint (duplicate of `description`); the UI never renders it. */
+  aiSummary?: string;
   whyItMatters: string;
   sources: NewsSource[];
 }
@@ -40,6 +41,63 @@ export interface NewsFeed {
   portfolioCoverage: { covered: number; total: number };
   aiMarketBrief: string;
   upcomingEvents: UpcomingEvent[];
+}
+
+type SentimentCounts = { positive: number; neutral: number; negative: number };
+
+/** Whole-feed aggregates for the side panels, computed server-side so cards can load a page at a time. */
+export interface NewsSummary {
+  count: number;
+  highImpact: number;
+  lastUpdate: string | null;
+  sentiment: SentimentCounts;
+  daily: ({ day: string } & SentimentCounts)[];
+  byTicker: Record<string, SentimentCounts & { count: number; latest: string; at: string }>;
+  tickers: string[];
+  sources: string[];
+  tape: { id: string; headline: string; tickers: string[]; sentiment: Sentiment; url: string | null }[];
+}
+
+export interface NewsMeta {
+  summary: NewsSummary;
+  portfolioCoverage: { covered: number; total: number };
+  aiMarketBrief: string;
+  upcomingEvents: UpcomingEvent[];
+}
+
+/** One page of cards; `meta` rides along on the first page only. */
+export interface NewsPage {
+  events: NewsEvent[];
+  total: number;
+  offset: number;
+  hasMore: boolean;
+  meta?: NewsMeta;
+}
+
+export interface NewsQueryState {
+  filter: NewsFilter;
+  ticker: string;
+  source: string;
+  query: string;
+  sort: SortKey;
+}
+
+export const NEWS_PAGE_SIZE = 12;
+export const DEFAULT_NEWS_QUERY: NewsQueryState = { filter: "all", ticker: "all", source: "all", query: "", sort: "relevance" };
+
+export function newsPageParams(q: NewsQueryState, offset = 0, limit = NEWS_PAGE_SIZE) {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset), sort: q.sort });
+  if (q.filter !== "all") params.set("category", q.filter);
+  if (q.ticker !== "all") params.set("ticker", q.ticker);
+  if (q.source !== "all") params.set("source", q.source);
+  if (q.query.trim()) params.set("q", q.query.trim());
+  return params;
+}
+
+export async function fetchNewsPage(q: NewsQueryState, offset: number, signal?: AbortSignal): Promise<NewsPage> {
+  const res = await fetch(`/api/news?${newsPageParams(q, offset)}`, { signal });
+  if (!res.ok) throw new Error(`News request failed (${res.status})`);
+  return res.json();
 }
 
 const FILTER_LABELS: Record<NewsFilter, string> = {

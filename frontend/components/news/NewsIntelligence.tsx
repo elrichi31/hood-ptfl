@@ -1,16 +1,19 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Card } from "@/components/Card";
 import {
+  DEFAULT_NEWS_QUERY,
   NEWS_FILTERS,
-  filterAndSortNews,
+  NEWS_PAGE_SIZE,
+  fetchNewsPage,
   filterLabel,
-  sentimentSummary,
   timeAgo,
   type NewsEvent,
-  type NewsFeed,
-  type NewsFilter,
+  type NewsMeta,
+  type NewsPage,
+  type NewsQueryState,
+  type NewsSummary,
   type SortKey,
 } from "@/lib/news";
 
@@ -21,34 +24,11 @@ const IMPACT_COLOR: Record<NewsEvent["impact"], string> = {
 };
 
 /** Per held ticker: story count, sentiment mix, latest headline — sorted by portfolio weight. */
-function holdingsPulse(events: NewsEvent[], holdings: Holdings) {
-  type Row = { positive: number; neutral: number; negative: number; count: number; latest: string; at: string };
-  const by = new Map<string, Row>();
-  for (const e of events) {
-    for (const t of e.tickers) {
-      if (!holdings[t]) continue;
-      const r = by.get(t) ?? { positive: 0, neutral: 0, negative: 0, count: 0, latest: e.headline, at: e.publishedAt };
-      r[e.sentiment]++;
-      r.count++;
-      if (e.publishedAt > r.at) Object.assign(r, { latest: e.headline, at: e.publishedAt });
-      by.set(t, r);
-    }
-  }
-  return [...by]
+function holdingsPulse(byTicker: NewsSummary["byTicker"], holdings: Holdings) {
+  return Object.entries(byTicker)
+    .filter(([ticker]) => holdings[ticker])
     .map(([ticker, r]) => ({ ticker, ...r, ...holdings[ticker] }))
     .sort((a, b) => b.weight - a.weight);
-}
-
-/** Story counts by sentiment per calendar day, oldest first. */
-function dailySentiment(events: NewsEvent[]) {
-  const by = new Map<string, { positive: number; neutral: number; negative: number }>();
-  for (const e of events) {
-    const day = e.publishedAt.slice(0, 10);
-    const r = by.get(day) ?? { positive: 0, neutral: 0, negative: 0 };
-    r[e.sentiment]++;
-    by.set(day, r);
-  }
-  return [...by].map(([day, r]) => ({ day, ...r })).sort((a, b) => a.day.localeCompare(b.day));
 }
 
 const SENTIMENT_COLOR: Record<NewsEvent["sentiment"], string> = {
@@ -165,8 +145,7 @@ export function NewsCard({ event, featured, holdings }: { event: NewsEvent; feat
 }
 
 /** Broadcast-style tape: newest headlines scroll right-to-left with each ticker's move today. */
-function TickerTape({ events, holdings }: { events: NewsEvent[]; holdings: Holdings }) {
-  const items = [...events].sort((a, b) => b.publishedAt.localeCompare(a.publishedAt)).slice(0, 20);
+function TickerTape({ items, holdings }: { items: NewsSummary["tape"]; holdings: Holdings }) {
   if (!items.length) return null;
   const tape = (hidden?: boolean) => (
     <div className="flex shrink-0 items-center" aria-hidden={hidden}>
@@ -176,7 +155,7 @@ function TickerTape({ events, holdings }: { events: NewsEvent[]; holdings: Holdi
         return (
           <a
             key={e.id}
-            href={e.sources[0]?.url}
+            href={e.url ?? undefined}
             target="_blank"
             rel="noopener noreferrer"
             tabIndex={hidden ? -1 : undefined}
@@ -213,38 +192,106 @@ function TickerTape({ events, holdings }: { events: NewsEvent[]; holdings: Holdi
   );
 }
 
-export function NewsIntelligence({ feed, holdings = {}, holdingsLoading = false, holdingsUnavailable = false }: { feed: NewsFeed; holdings?: Holdings; holdingsLoading?: boolean; holdingsUnavailable?: boolean }) {
-  const [filter, setFilter] = useState<NewsFilter>("all");
-  const [ticker, setTicker] = useState("all");
-  const [source, setSource] = useState("all");
-  const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<SortKey>("relevance");
+const EMPTY_META: NewsMeta = {
+  summary: { count: 0, highImpact: 0, lastUpdate: null, sentiment: { positive: 0, neutral: 0, negative: 0 }, daily: [], byTicker: {}, tickers: [], sources: [], tape: [] },
+  portfolioCoverage: { covered: 0, total: 0 },
+  aiMarketBrief: "",
+  upcomingEvents: [],
+};
 
-  const tickers = useMemo(
-    () => [...new Set(feed.events.flatMap((e) => e.tickers))].sort(),
-    [feed.events],
-  );
-  const sources = useMemo(
-    () => [...new Set(feed.events.flatMap((e) => e.sources.map((s) => s.name)))].sort(),
-    [feed.events],
-  );
+export function NewsIntelligence({ feed, holdings = {}, holdingsLoading = false, holdingsUnavailable = false }: { feed: NewsPage; holdings?: Holdings; holdingsLoading?: boolean; holdingsUnavailable?: boolean }) {
+  // The controls (immediate) vs. the query the cards on screen were loaded with.
+  const [controls, setControls] = useState<NewsQueryState>(DEFAULT_NEWS_QUERY);
+  const [applied, setApplied] = useState<NewsQueryState>(DEFAULT_NEWS_QUERY);
 
-  const sorted = useMemo(
-    () => filterAndSortNews(feed.events, { filter, ticker, source, query, sort }),
-    [feed.events, filter, ticker, source, query, sort],
-  );
-  const [topStory, ...rest] = sorted;
+  // Cards come a page at a time from the server; the side panels use the summary of the whole feed.
+  const [events, setEvents] = useState(feed.events);
+  const [total, setTotal] = useState(feed.total);
+  const [hasMore, setHasMore] = useState(feed.hasMore);
+  const [meta, setMeta] = useState<NewsMeta>(feed.meta ?? EMPTY_META);
+  const [loading, setLoading] = useState<"query" | "more" | null>(null);
+  const [pageError, setPageError] = useState<string | null>(null);
+  const isDefault = (Object.keys(DEFAULT_NEWS_QUERY) as (keyof NewsQueryState)[]).every((k) => applied[k] === DEFAULT_NEWS_QUERY[k]);
 
-  const overview = sentimentSummary(feed.events);
-  const pulse = holdingsPulse(feed.events, holdings);
-  const daily = dailySentiment(feed.events);
+  // A background refresh (new server render) updates the panels, and the cards too unless the
+  // reader has filtered or already loaded more pages (their place in the list is kept).
+  const [seenFeed, setSeenFeed] = useState(feed);
+  if (feed !== seenFeed) {
+    setSeenFeed(feed);
+    if (feed.meta) setMeta(feed.meta);
+    if (isDefault && events.length <= NEWS_PAGE_SIZE) {
+      setEvents(feed.events);
+      setTotal(feed.total);
+      setHasMore(feed.hasMore);
+    }
+  }
+
+  // Filters, sort and search are applied by the server: any change reloads page 1. Search waits a
+  // beat after the last keystroke, and a newer request cancels the one still in flight.
+  const inflight = useRef<AbortController | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => {
+    inflight.current?.abort();
+    clearTimeout(timer.current);
+  }, []);
+
+  function run(next: NewsQueryState) {
+    inflight.current?.abort();
+    const controller = new AbortController();
+    inflight.current = controller;
+    setLoading("query");
+    setPageError(null);
+    fetchNewsPage(next, 0, controller.signal)
+      .then((page) => {
+        setEvents(page.events);
+        setTotal(page.total);
+        setHasMore(page.hasMore);
+        setApplied(next);
+        setLoading(null);
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        setPageError("Could not load stories. Try again.");
+        setLoading(null);
+      });
+  }
+
+  function update(patch: Partial<NewsQueryState>, debounced = false) {
+    const next = { ...controls, ...patch };
+    setControls(next);
+    clearTimeout(timer.current);
+    if (debounced) timer.current = setTimeout(() => run(next), 300);
+    else run(next);
+  }
+
+  async function loadMore() {
+    setLoading("more");
+    setPageError(null);
+    try {
+      const page = await fetchNewsPage(applied, events.length);
+      setEvents((prev) => {
+        const seen = new Set(prev.map((e) => e.id));
+        return [...prev, ...page.events.filter((e) => !seen.has(e.id))];
+      });
+      setTotal(page.total);
+      setHasMore(page.hasMore);
+    } catch {
+      setPageError("Could not load more stories. Try again.");
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  const { summary } = meta;
+  const [topStory, ...rest] = events;
+  const overview = summary.sentiment;
+  const pulse = holdingsPulse(summary.byTicker, holdings);
+  const daily = summary.daily;
   const maxDaily = Math.max(...daily.map((d) => d.positive + d.neutral + d.negative), 1);
   const sentTotal = overview.positive + overview.neutral + overview.negative || 1;
-  const highImpactCount = feed.events.filter((e) => e.impact === "high").length;
-  const lastUpdate = feed.events.reduce(
-    (latest, e) => (new Date(e.publishedAt) > new Date(latest) ? e.publishedAt : latest),
-    feed.events[0]?.publishedAt ?? new Date().toISOString(),
-  );
+  const lastUpdate = summary.lastUpdate ?? new Date().toISOString();
+  const tickers = summary.tickers;
+  const sources = summary.sources;
 
   return (
     <>
@@ -258,14 +305,14 @@ export function NewsIntelligence({ feed, holdings = {}, holdingsLoading = false,
         </div>
       </div>
 
-      <TickerTape events={feed.events} holdings={holdings} />
+      <TickerTape items={summary.tape} holdings={holdings} />
 
       <div className="mt-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <SummaryStat label="Relevant today" value={String(feed.events.length)} />
-        <SummaryStat label="High impact" value={String(highImpactCount)} />
+        <SummaryStat label="Relevant today" value={String(summary.count)} />
+        <SummaryStat label="High impact" value={String(summary.highImpact)} />
         <SummaryStat
           label="Portfolio coverage"
-          value={`${feed.portfolioCoverage.covered} / ${feed.portfolioCoverage.total} positions`}
+          value={`${meta.portfolioCoverage.covered} / ${meta.portfolioCoverage.total} positions`}
         />
         <SummaryStat label="Last update" value={timeAgo(lastUpdate)} />
       </div>
@@ -275,9 +322,9 @@ export function NewsIntelligence({ feed, holdings = {}, holdingsLoading = false,
           <button
             key={f}
             type="button"
-            onClick={() => setFilter(f)}
+            onClick={() => update({ filter: f })}
             className={`rounded-full px-3 py-1.5 text-sm font-medium ${
-              filter === f
+              controls.filter === f
                 ? "bg-[var(--accent)] text-[var(--accent-foreground)]"
                 : "border border-[var(--border)] text-[var(--muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)]"
             }`}
@@ -289,8 +336,8 @@ export function NewsIntelligence({ feed, holdings = {}, holdingsLoading = false,
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <select
-          value={ticker}
-          onChange={(e) => setTicker(e.target.value)}
+          value={controls.ticker}
+          onChange={(e) => update({ ticker: e.target.value })}
           className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-sm"
         >
           <option value="all">All tickers</option>
@@ -301,8 +348,8 @@ export function NewsIntelligence({ feed, holdings = {}, holdingsLoading = false,
           ))}
         </select>
         <select
-          value={source}
-          onChange={(e) => setSource(e.target.value)}
+          value={controls.source}
+          onChange={(e) => update({ source: e.target.value })}
           className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-sm"
         >
           <option value="all">All sources</option>
@@ -314,14 +361,14 @@ export function NewsIntelligence({ feed, holdings = {}, holdingsLoading = false,
         </select>
         <input
           type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          value={controls.query}
+          onChange={(e) => update({ query: e.target.value }, true)}
           placeholder="Search news..."
           className="min-w-[180px] flex-1 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-sm"
         />
         <select
-          value={sort}
-          onChange={(e) => setSort(e.target.value as SortKey)}
+          value={controls.sort}
+          onChange={(e) => update({ sort: e.target.value as SortKey })}
           className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-sm"
         >
           <option value="relevance">Sort: Relevance</option>
@@ -330,23 +377,49 @@ export function NewsIntelligence({ feed, holdings = {}, holdingsLoading = false,
       </div>
 
       <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-12">
-        <div className="flex flex-col gap-4 lg:col-span-8">
-          {!sorted.length && (
+        <div className="flex flex-col gap-4 lg:col-span-8" aria-busy={loading === "query"}>
+          {!events.length && loading !== "query" && (
             <Card>
-              <p className="text-sm text-[var(--muted)]">No stories match these filters.</p>
+              <p className="text-sm text-[var(--muted)]">
+                {isDefault && !summary.count
+                  ? "No news for your holdings yet. The first sync can take a few minutes."
+                  : "No stories match these filters."}
+              </p>
             </Card>
           )}
-          {topStory && (
-            <div>
-              <p className="mb-2 text-xs font-medium tracking-wide text-[var(--muted)] uppercase">
-                Top story for your portfolio
+          <div className={`flex flex-col gap-4 transition-opacity ${loading === "query" ? "opacity-50" : ""}`}>
+            {topStory && (
+              <div>
+                <p className="mb-2 text-xs font-medium tracking-wide text-[var(--muted)] uppercase">
+                  Top story for your portfolio
+                </p>
+                <NewsCard event={topStory} featured holdings={holdings} />
+              </div>
+            )}
+            {rest.map((event) => (
+              <NewsCard key={event.id} event={event} holdings={holdings} />
+            ))}
+          </div>
+          {pageError && (
+            <p role="alert" className="text-sm text-[var(--danger)]">{pageError}</p>
+          )}
+          {events.length > 0 && (
+            <div className="flex flex-col items-center gap-2 pt-1">
+              <p className="font-figures font-mono text-xs text-[var(--muted)]">
+                Showing {events.length} of {total}
               </p>
-              <NewsCard event={topStory} featured holdings={holdings} />
+              {hasMore && (
+                <button
+                  type="button"
+                  onClick={loadMore}
+                  disabled={loading !== null}
+                  className="rounded-full border border-[var(--border)] px-5 py-2 text-sm font-semibold hover:bg-[var(--surface-hover)] disabled:opacity-50"
+                >
+                  {loading === "more" ? "Loading…" : "Show more stories"}
+                </button>
+              )}
             </div>
           )}
-          {rest.map((event) => (
-            <NewsCard key={event.id} event={event} holdings={holdings} />
-          ))}
         </div>
 
         <div className="flex flex-col gap-5 lg:col-span-4">
@@ -403,9 +476,9 @@ export function NewsIntelligence({ feed, holdings = {}, holdingsLoading = false,
                   <button
                     key={h.ticker}
                     type="button"
-                    onClick={() => setTicker(ticker === h.ticker ? "all" : h.ticker)}
+                    onClick={() => update({ ticker: controls.ticker === h.ticker ? "all" : h.ticker })}
                     className={`-mx-2 rounded-md border-b border-[var(--border)] px-2 py-2 text-left last:border-0 hover:bg-[var(--surface-hover)] ${
-                      ticker === h.ticker ? "bg-[var(--surface-hover)]" : ""
+                      controls.ticker === h.ticker ? "bg-[var(--surface-hover)]" : ""
                     }`}
                   >
                     <div className="flex items-center gap-2 text-sm">
@@ -433,15 +506,15 @@ export function NewsIntelligence({ feed, holdings = {}, holdingsLoading = false,
           </Card>
 
           <Card title="Market brief">
-            <p className="text-sm text-[var(--foreground)]">{feed.aiMarketBrief}</p>
+            <p className="text-sm text-[var(--foreground)]">{meta.aiMarketBrief}</p>
           </Card>
 
           <Card title="Upcoming events">
             <div className="flex flex-col gap-2 text-sm">
-              {!feed.upcomingEvents.length && (
+              {!meta.upcomingEvents.length && (
                 <p className="text-[var(--muted)]">No earnings from your holdings in the next weeks.</p>
               )}
-              {feed.upcomingEvents.map((e) => (
+              {meta.upcomingEvents.map((e) => (
                 <div key={e.label} className="flex items-center justify-between">
                   <span>{e.label}</span>
                   <span className="text-[var(--muted)]">{e.date}</span>

@@ -4,7 +4,7 @@ import type { Holdings } from "@/components/news/NewsIntelligence";
 import { ProgressiveNews } from "@/components/news/ProgressiveNews";
 import { DashboardRetry } from "@/components/DashboardRetry";
 import { NewsAutoRefresh } from "@/components/news/NewsAutoRefresh";
-import type { NewsFeed } from "@/lib/news";
+import { DEFAULT_NEWS_QUERY, NEWS_PAGE_SIZE, newsPageParams, type NewsPage } from "@/lib/news";
 import { prevCloseFor, type Hist } from "@/lib/history";
 import { auth } from "@/lib/auth";
 import { viewerTz } from "@/lib/tz";
@@ -35,13 +35,14 @@ export default async function News() {
   if (!session) redirect("/login");
 
   const holdings = loadHoldings();
-  let feed: NewsFeed | null = null;
+  // First page only (plus the summary for the side panels); the rest loads on demand.
+  let feed: NewsPage | null = null;
   try {
-    const response = await backend("/api/v1/news");
+    const response = await backend(`/api/v1/news/page?${newsPageParams(DEFAULT_NEWS_QUERY, 0, NEWS_PAGE_SIZE)}`);
     if (response.ok) {
-      const live: NewsFeed = await response.json();
       // Real data only: an empty portfolio feed renders its empty state, never sample headlines.
-      if (Array.isArray(live.events)) feed = live;
+      const live: NewsPage = await response.json();
+      if (Array.isArray(live.events) && live.meta) feed = live;
     }
   } catch { /* Keep a visible retry state instead of failing the whole route. */ }
 

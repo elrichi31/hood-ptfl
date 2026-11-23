@@ -4,6 +4,7 @@ import logger from '@adonisjs/core/services/logger'
 import NewsArticle from '#models/news_article'
 import { heldPositions } from '#services/poller'
 import { cacheAsync } from '#services/async_cache'
+import { sqlTime } from '#services/sql_time'
 import {
   fetchFinnhubNews,
   fetchAlphaVantageNews,
@@ -367,7 +368,7 @@ export async function classifyPending(equities: { symbol: string; value: number 
   }))
   const pending = await NewsArticle.query()
     .where((q) => q.whereNull('ai').orWhere('ai', 'not like', `%"v":${AI_VERSION},%`))
-    .where('publishedAt', '>=', DateTime.now().minus({ days: FEED_LOOKBACK_DAYS }).toJSDate())
+    .where('publishedAt', '>=', sqlTime(DateTime.now().minus({ days: FEED_LOOKBACK_DAYS })))
     .orderBy('publishedAt', 'desc')
     .limit(CLASSIFY_PER_CYCLE)
 
@@ -408,7 +409,7 @@ const SAME_STORY_MIN = 0.7
 export async function linkStories() {
   if (!typesafeEnabled()) return
   const rows = await NewsArticle.query()
-    .where('publishedAt', '>=', DateTime.now().minus({ days: FEED_LOOKBACK_DAYS }).toJSDate())
+    .where('publishedAt', '>=', sqlTime(DateTime.now().minus({ days: FEED_LOOKBACK_DAYS })))
     .orderBy('publishedAt', 'asc')
   const meta = rows.map((r) => ({
     row: r,
@@ -498,7 +499,7 @@ export function selectFeedEvents(
 }
 
 async function buildNewsFeed(): Promise<NewsFeedOut> {
-  const since = DateTime.now().minus({ days: FEED_LOOKBACK_DAYS }).toJSDate()
+  const since = sqlTime(DateTime.now().minus({ days: FEED_LOOKBACK_DAYS }))
   const rows = await NewsArticle.query()
     .where('publishedAt', '>=', since)
     .orderBy('publishedAt', 'desc')
@@ -545,6 +546,147 @@ async function buildNewsFeed(): Promise<NewsFeedOut> {
     portfolioCoverage: { covered: coveredTickers.size, total: equities.length },
     aiMarketBrief: buildMarketBrief(events),
     upcomingEvents: cachedUpcomingEvents,
+  }
+}
+
+export type NewsSort = 'relevance' | 'newest'
+export type NewsQuery = {
+  limit: number
+  offset: number
+  sort: NewsSort
+  /** A NewsCategory, or 'high-impact'. */
+  category?: string
+  ticker?: string
+  source?: string
+  q?: string
+}
+
+/** Same rules the dashboard used to apply client-side, now applied before anything is sent. */
+export function queryNews(events: NewsEventOut[], query: NewsQuery) {
+  const q = query.q?.trim().toLowerCase()
+  const filtered = events.filter((e) => {
+    if (query.category === 'high-impact') {
+      if (e.impact !== 'high') return false
+    } else if (query.category && e.category !== query.category) {
+      return false
+    }
+    if (query.ticker && !e.tickers.includes(query.ticker)) return false
+    if (query.source && !e.sources.some((s) => s.name === query.source)) return false
+    if (q && !`${e.headline} ${e.description} ${e.tickers.join(' ')}`.toLowerCase().includes(q)) {
+      return false
+    }
+    return true
+  })
+  filtered.sort((a, b) =>
+    query.sort === 'newest'
+      ? b.publishedAt.localeCompare(a.publishedAt)
+      : b.relevance - a.relevance || b.publishedAt.localeCompare(a.publishedAt)
+  )
+  return {
+    total: filtered.length,
+    events: filtered.slice(query.offset, query.offset + query.limit),
+  }
+}
+
+type SentimentCounts = { positive: number; neutral: number; negative: number }
+export type NewsSummary = {
+  count: number
+  highImpact: number
+  lastUpdate: string | null
+  sentiment: SentimentCounts
+  daily: ({ day: string } & SentimentCounts)[]
+  byTicker: Record<string, SentimentCounts & { count: number; latest: string; at: string }>
+  tickers: string[]
+  sources: string[]
+  /** Newest headlines for the ticker tape (slim: no body text). */
+  tape: {
+    id: string
+    headline: string
+    tickers: string[]
+    sentiment: NewsEventOut['sentiment']
+    url: string | null
+  }[]
+}
+
+/** Everything the side panels need, over the whole feed, so the page can load cards a few at a time. */
+export function summarizeNews(events: NewsEventOut[]): NewsSummary {
+  const sentiment: SentimentCounts = { positive: 0, neutral: 0, negative: 0 }
+  const byDay = new Map<string, SentimentCounts>()
+  const byTicker: NewsSummary['byTicker'] = {}
+  const sources = new Set<string>()
+  let lastUpdate: string | null = null
+
+  for (const e of events) {
+    sentiment[e.sentiment]++
+    const day = e.publishedAt.slice(0, 10)
+    const d = byDay.get(day) ?? { positive: 0, neutral: 0, negative: 0 }
+    d[e.sentiment]++
+    byDay.set(day, d)
+    for (const s of e.sources) sources.add(s.name)
+    for (const t of e.tickers) {
+      const r = (byTicker[t] ??= {
+        positive: 0,
+        neutral: 0,
+        negative: 0,
+        count: 0,
+        latest: e.headline,
+        at: e.publishedAt,
+      })
+      r[e.sentiment]++
+      r.count++
+      if (e.publishedAt > r.at) {
+        r.latest = e.headline
+        r.at = e.publishedAt
+      }
+    }
+    if (!lastUpdate || e.publishedAt > lastUpdate) lastUpdate = e.publishedAt
+  }
+
+  return {
+    count: events.length,
+    highImpact: events.filter((e) => e.impact === 'high').length,
+    lastUpdate,
+    sentiment,
+    daily: [...byDay].map(([day, c]) => ({ day, ...c })).sort((a, b) => a.day.localeCompare(b.day)),
+    byTicker,
+    tickers: Object.keys(byTicker).sort(),
+    sources: [...sources].sort(),
+    tape: [...events]
+      .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
+      .slice(0, 20)
+      .map((e) => ({
+        id: e.id,
+        headline: e.headline,
+        tickers: e.tickers,
+        sentiment: e.sentiment,
+        url: e.sources[0]?.url ?? null,
+      })),
+  }
+}
+
+/**
+ * One page of cards (filtered/sorted server-side) for the News screen. Only the first page carries
+ * the summary and the portfolio-level extras, and cards drop `aiSummary` (a duplicate of
+ * `description` that the UI never shows), so each request stays small.
+ */
+export async function getNewsPage(query: NewsQuery) {
+  const feed = await getNewsFeed()
+  const { events, total } = queryNews(feed.events, query)
+  const page = {
+    events: events.map(({ aiSummary: _unused, ...card }) => card),
+    total,
+    offset: query.offset,
+    hasMore: query.offset + events.length < total,
+  }
+  if (query.offset > 0) return page
+  return {
+    ...page,
+    meta: {
+      summary: summarizeNews(feed.events),
+      portfolioCoverage: feed.portfolioCoverage,
+      aiMarketBrief: feed.aiMarketBrief,
+      upcomingEvents: feed.upcomingEvents,
+    },
   }
 }
 

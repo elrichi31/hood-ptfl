@@ -1,5 +1,12 @@
 import { test } from '@japa/runner'
-import { categorize, groupArticles, selectFeedEvents, type NewsEventOut } from '#services/news'
+import {
+  categorize,
+  groupArticles,
+  queryNews,
+  selectFeedEvents,
+  summarizeNews,
+  type NewsEventOut,
+} from '#services/news'
 import type { RawArticle } from '#services/news_providers'
 
 function article(overrides: Partial<RawArticle>): RawArticle {
@@ -195,5 +202,83 @@ test.group('news: selectFeedEvents', () => {
     const events = [event('both', ['AAPL', 'NVDA'], 80, '2024-01-15T10:00:00Z')]
     const out = selectFeedEvents(events, ['AAPL', 'NVDA'], { max: 5, perTicker: 2 })
     assert.lengthOf(out, 1)
+  })
+})
+
+const base = { limit: 10, offset: 0, sort: 'relevance' as const }
+
+test.group('news: queryNews / summarizeNews', () => {
+  const events = [
+    {
+      ...event('a', ['AAPL'], 90, '2024-01-15T10:00:00Z'),
+      impact: 'high' as const,
+      category: 'earnings' as const,
+      headline: 'Apple beats',
+    },
+    {
+      ...event('b', ['NVDA'], 70, '2024-01-16T10:00:00Z'),
+      sentiment: 'negative' as const,
+      headline: 'Nvidia probe',
+    },
+    {
+      ...event('c', ['AAPL', 'NVDA'], 50, '2024-01-14T10:00:00Z'),
+      sentiment: 'positive' as const,
+      sources: [{ name: 'Reuters', url: 'https://r.example/c' }],
+    },
+    event('d', ['KO'], 30, '2024-01-17T10:00:00Z'),
+  ]
+
+  test('sorts by relevance or recency', ({ assert }) => {
+    assert.deepEqual(
+      queryNews(events, base).events.map((e) => e.id),
+      ['a', 'b', 'c', 'd']
+    )
+    assert.deepEqual(
+      queryNews(events, { ...base, sort: 'newest' }).events.map((e) => e.id),
+      ['d', 'b', 'a', 'c']
+    )
+  })
+
+  test('filters by category, high impact, ticker, source and text', ({ assert }) => {
+    const ids = (q: Partial<typeof base> & Record<string, unknown>) =>
+      queryNews(events, { ...base, ...q }).events.map((e) => e.id)
+    assert.deepEqual(ids({ category: 'earnings' }), ['a'])
+    assert.deepEqual(ids({ category: 'high-impact' }), ['a'])
+    assert.deepEqual(ids({ ticker: 'NVDA' }), ['b', 'c'])
+    assert.deepEqual(ids({ source: 'Reuters' }), ['c'])
+    assert.deepEqual(ids({ q: 'apple' }), ['a'])
+    assert.deepEqual(ids({ q: 'nvda' }), ['b', 'c'])
+  })
+
+  test('pages through results and reports the unfiltered total', ({ assert }) => {
+    const p1 = queryNews(events, { ...base, limit: 3 })
+    assert.equal(p1.total, 4)
+    assert.deepEqual(
+      p1.events.map((e) => e.id),
+      ['a', 'b', 'c']
+    )
+    const p2 = queryNews(events, { ...base, limit: 3, offset: 3 })
+    assert.deepEqual(
+      p2.events.map((e) => e.id),
+      ['d']
+    )
+    assert.lengthOf(queryNews(events, { ...base, offset: 50 }).events, 0)
+  })
+
+  test('summarizes the whole feed for the side panels', ({ assert }) => {
+    const s = summarizeNews(events)
+    assert.equal(s.count, 4)
+    assert.equal(s.highImpact, 1)
+    assert.equal(s.lastUpdate, '2024-01-17T10:00:00Z')
+    assert.deepEqual(s.sentiment, { positive: 1, neutral: 2, negative: 1 })
+    assert.deepEqual(s.tickers, ['AAPL', 'KO', 'NVDA'])
+    assert.equal(s.byTicker.NVDA.count, 2)
+    assert.equal(s.byTicker.NVDA.latest, 'Nvidia probe')
+    assert.deepEqual(
+      s.daily.map((d) => d.day),
+      ['2024-01-14', '2024-01-15', '2024-01-16', '2024-01-17']
+    )
+    assert.equal(s.tape[0].id, 'd')
+    assert.isAtMost(s.tape.length, 20)
   })
 })

@@ -3,10 +3,10 @@
 import { useEffect, useState } from "react";
 import { NewsIntelligence, type Holdings } from "@/components/news/NewsIntelligence";
 import { DashboardRetry } from "@/components/DashboardRetry";
-import type { NewsFeed } from "@/lib/news";
+import type { NewsPage } from "@/lib/news";
 
 /** Optional portfolio enrichment must not suspend the feed or reset its filters. */
-export function ProgressiveNews({ feed, holdings }: { feed: NewsFeed; holdings: Promise<Holdings | null> }) {
+export function ProgressiveNews({ feed, holdings }: { feed: NewsPage; holdings: Promise<Holdings | null> }) {
   const [result, setResult] = useState<{ source: typeof holdings; data: Holdings | null } | null>(null);
   const current = result?.source === holdings ? result : null;
   useEffect(() => {

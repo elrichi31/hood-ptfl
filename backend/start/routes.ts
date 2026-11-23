@@ -26,6 +26,7 @@ router
     router.get('symbol/:symbol', [controllers.Symbol, 'show'])
     router.get('politician-trades', [controllers.PoliticianTrades, 'index'])
     router.get('news', [controllers.News, 'index'])
+    router.get('news/page', [controllers.News, 'page'])
     router.get('usage', [controllers.Usage, 'index'])
     router.get('risk', [controllers.Risk, 'index'])
     router.get('risk/returns/:symbol', [controllers.Risk, 'returns'])

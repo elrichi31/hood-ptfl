@@ -4,6 +4,7 @@ import PortfolioSnapshot from '#models/portfolio_snapshot'
 import db from '@adonisjs/lucid/services/db'
 import { getDailyPnl } from '#services/daily_pnl'
 import { getReferencePrices } from '#services/enrichment'
+import { sqlTime } from '#services/sql_time'
 
 let positionsCache: { key: string; body: unknown } | null = null
 
@@ -106,7 +107,7 @@ export default class HistoryController {
    */
   async positions({ response }: HttpContext) {
     const snapshots = await PortfolioSnapshot.query()
-      .where('createdAt', '>=', DateTime.now().minus({ days: 90 }).toJSDate())
+      .where('createdAt', '>=', sqlTime(DateTime.now().minus({ days: 90 })))
       .orderBy('created_at', 'asc')
     if (!snapshots.length) return response.ok({ at: [], total: [], cash: [], symbols: {} })
 

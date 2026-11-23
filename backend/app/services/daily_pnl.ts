@@ -2,8 +2,8 @@ import db from '@adonisjs/lucid/services/db'
 import logger from '@adonisjs/core/services/logger'
 import { DateTime } from 'luxon'
 import PortfolioSnapshot from '#models/portfolio_snapshot'
-import PositionSnapshot from '#models/position_snapshot'
 import { closeMin, etClock, isTradingDay } from '#services/market_hours'
+import { sqlTime } from '#services/sql_time'
 
 /**
  * Trading day a snapshot's move belongs to (ET date), close to close like Robinhood's history:
@@ -32,26 +32,28 @@ export async function computeDailyPnl(days = 3) {
   const cutoff = sessionOf(DateTime.now().minus({ days }).toJSDate())
   // One extra day so the first kept day has the previous day's last snapshot as its base.
   const snaps = await PortfolioSnapshot.query()
-    .where(
-      'createdAt',
-      '>=',
-      DateTime.now()
-        .minus({ days: days + 4 })
-        .toJSDate()
-    )
+    .where('createdAt', '>=', sqlTime(DateTime.now().minus({ days: days + 4 })))
     .orderBy('created_at', 'asc')
   if (snaps.length < 2) return 0
 
-  // Filter by time, not id: backfill inserts old timestamps with new ids.
-  const rows = await PositionSnapshot.query().whereIn(
-    'portfolioSnapshotId',
-    PortfolioSnapshot.query().select('id').where('createdAt', '>=', snaps[0].createdAt.toJSDate())
-  )
+  // Filter by time, not id: backfill inserts old timestamps with new ids. Raw rows, not models:
+  // hydrating ~100k position rows through Lucid blocked the event loop for seconds on every poll.
+  const rows: { portfolio_snapshot_id: number; symbol: string; quantity: string; price: string }[] =
+    await db
+      .from('position_snapshots')
+      .whereIn(
+        'portfolio_snapshot_id',
+        db
+          .from('portfolio_snapshots')
+          .select('id')
+          .where('created_at', '>=', sqlTime(snaps[0].createdAt))
+      )
+      .select('portfolio_snapshot_id', 'symbol', 'quantity', 'price')
   const held = new Map<number, Map<string, { q: number; p: number }>>()
   for (const r of rows) {
-    const m = held.get(r.portfolioSnapshotId) ?? new Map()
+    const m = held.get(r.portfolio_snapshot_id) ?? new Map()
     m.set(r.symbol, { q: Number(r.quantity), p: Number(r.price) })
-    held.set(r.portfolioSnapshotId, m)
+    held.set(r.portfolio_snapshot_id, m)
   }
 
   const out = new Map<string, { pnl: number; start: number; end: number }>()
