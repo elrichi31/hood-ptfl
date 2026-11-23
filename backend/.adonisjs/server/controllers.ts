@@ -12,6 +12,7 @@ export const controllers = {
   PoliticianTrades: () => import('#controllers/politician_trades_controller'),
   Portfolio: () => import('#controllers/portfolio_controller'),
   Risk: () => import('#controllers/risk_controller'),
+  Sectors: () => import('#controllers/sectors_controller'),
   Symbol: () => import('#controllers/symbol_controller'),
   Usage: () => import('#controllers/usage_controller'),
 }

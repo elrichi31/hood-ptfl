@@ -119,9 +119,10 @@ const validPositions = (rows: Position[]) =>
 async function load<T>(
   path: string,
   valid: (data: T) => boolean,
+  timeoutMs?: number,
 ): Promise<Result<T>> {
   try {
-    const response = await backend(path);
+    const response = await backend(path, undefined, { timeoutMs });
     if (!response.ok)
       return { data: null, error: `Service returned HTTP ${response.status}.` };
     const data = await response.json();
@@ -161,6 +162,7 @@ export default async function Home() {
     historyResult,
     positionsResult,
     dailyResult,
+    sectorsResult,
   ] = await Promise.all([
     load<Latest>(
       "/api/v1/latest",
@@ -228,7 +230,17 @@ export default async function Home() {
             nullableNumber(s.pct),
         ),
     ),
-
+    // Decorative grouping only: short deadline so a cold sector lookup never stalls the dashboard
+    // (the backend keeps going and caches it, so the next load has sectors).
+    load<Record<string, string | null>>(
+      "/api/v1/sectors",
+      (d) =>
+        !!d &&
+        typeof d === "object" &&
+        !Array.isArray(d) &&
+        Object.values(d).every((v) => v === null || typeof v === "string"),
+      4_000,
+    ),
   ]);
   const latest = latestResult.data;
   const history = historyResult.data;
@@ -377,6 +389,7 @@ export default async function Home() {
           {posHistory ? (
             <PortfolioExplorer
               history={posHistory}
+              sectors={sectorsResult.data ?? undefined}
               tz={tz}
               aside={allocation}
             />

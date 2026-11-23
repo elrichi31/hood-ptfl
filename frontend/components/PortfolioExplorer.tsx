@@ -6,6 +6,7 @@ import { PortfolioChart } from "@/components/PortfolioChart";
 import { flowAdjustedPnl, prevCloseIndex, robinhoodTodayHistory, splitPnl, stepPnl } from "@/lib/history";
 import { useLiveHistory } from "@/components/LivePrices";
 import { LiveNumber } from "@/components/LiveNumber";
+import { lttbIndices } from "@/lib/downsample";
 
 export type PositionHistory = {
   at: string[];
@@ -70,10 +71,13 @@ function RangeTabs({ value, onChange }: { value: RangeKey; onChange: (r: RangeKe
 
 export function PortfolioExplorer({
   history: saved,
+  sectors,
   aside,
   tz,
 }: {
   history: PositionHistory;
+  /** Sector per equity symbol; crypto is labeled "Crypto" here, anything unknown "Other". */
+  sectors?: Record<string, string | null>;
   aside?: ReactNode;
   tz: string;
 }) {
@@ -162,10 +166,22 @@ export function PortfolioExplorer({
       const prices = s.price.filter((p): p is number => p != null);
       const lastValue = [...values].reverse().find((v) => v != null) ?? 0;
       const pct = prices.length >= 2 ? ((prices[prices.length - 1] - prices[0]) / prices[0]) * 100 : 0;
-      return { symbol, values, lastValue, pct, prices };
+      const sector = s.type === "crypto" ? "Crypto" : (sectors?.[symbol] ?? "Other");
+      return { symbol, values, lastValue, pct, prices, sector };
     })
     .filter((s) => s.lastValue > 0)
     .sort((a, b) => b.lastValue - a.lastValue);
+
+  // Group tiles by sector, biggest sector first; "Other" (unknown) always last.
+  const sectorMap = new Map<string, typeof perSymbol>();
+  for (const s of perSymbol) sectorMap.set(s.sector, [...(sectorMap.get(s.sector) ?? []), s]);
+  const bySector = [...sectorMap]
+    .map(([sector, items]) => {
+      const value = items.reduce((t, i) => t + i.lastValue, 0);
+      const pct = value ? items.reduce((t, i) => t + i.pct * i.lastValue, 0) / value : 0; // value-weighted
+      return { sector, items, value, pct };
+    })
+    .sort((a, b) => Number(a.sector === "Other") - Number(b.sector === "Other") || b.value - a.value);
 
   return (
     <div className="flex flex-col gap-4">
@@ -232,16 +248,40 @@ export function PortfolioExplorer({
       </div>
 
       <Card title="Each position" action={tabs}>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          {perSymbol.map((s) => (
-            <div key={s.symbol} className="rounded-lg border border-[var(--border)] p-3">
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="text-sm font-medium">{s.symbol}</span>
-                <span className={`font-figures font-mono text-xs ${upDown(s.pct)}`}>{signedPct(s.pct)}</span>
+        <div className="flex flex-col gap-6">
+          {bySector.map((g) => (
+            <section key={g.sector} aria-label={g.sector}>
+              <div className="mb-2 flex items-baseline justify-between gap-2 px-0.5">
+                <h3 className="text-sm font-semibold">{g.sector}</h3>
+                <span className="font-figures font-mono text-xs text-[var(--muted)]">
+                  {money(g.value)} · <span className={upDown(g.pct)}>{signedPct(g.pct)}</span>
+                </span>
               </div>
-              <p className="font-figures font-mono text-xs text-[var(--muted)]">{money(s.lastValue)}</p>
-              <MiniLine values={s.prices} />
-            </div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                {g.items.map((s) => {
+                  const tone = tileTone(s.pct);
+                  return (
+                    <div
+                      key={s.symbol}
+                      className="rounded-xl border p-3"
+                      style={{
+                        background: `color-mix(in oklab, ${tone} 13%, var(--surface))`,
+                        borderColor: `color-mix(in oklab, ${tone} 38%, transparent)`,
+                      }}
+                    >
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-sm font-semibold">{s.symbol}</span>
+                        <span className="font-figures font-mono text-xs font-medium" style={{ color: tone }}>
+                          {signedPct(s.pct)}
+                        </span>
+                      </div>
+                      <p className="font-figures font-mono text-xs text-[var(--muted)]">{money(s.lastValue)}</p>
+                      <MiniLine values={s.prices} color={tone} />
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
           ))}
         </div>
       </Card>
@@ -249,15 +289,31 @@ export function PortfolioExplorer({
   );
 }
 
+/** Green when up, red when down, neutral when flat (e.g. a $0 stablecoin). */
+const tileTone = (pct: number) =>
+  Math.abs(pct) < 0.005 ? "var(--muted)" : pct > 0 ? "var(--success)" : "var(--danger)";
+
 /** Price path, not value — so a buy mid-range doesn't look like a rally. */
-function MiniLine({ values }: { values: number[] }) {
+const MINI_POINTS = 36;
+function MiniLine({ values, color }: { values: number[]; color: string }) {
   if (values.length < 2) return <div className="mt-2 h-10" />;
-  const min = Math.min(...values);
-  const span = Math.max(...values) - min || 1;
-  const pts = values.map((v, i) => `${(i / (values.length - 1)) * 100},${38 - ((v - min) / span) * 36}`).join(" ");
+  // Hundreds of snapshots per range make a jagged line at this size; keep the shape with ~36 points.
+  const kept = values.length > MINI_POINTS ? lttbIndices(values, MINI_POINTS).map((i) => values[i]) : values;
+  const min = Math.min(...kept);
+  const span = Math.max(...kept) - min || 1;
+  const xy = kept.map((v, i) => `${(i / (kept.length - 1)) * 100},${36 - ((v - min) / span) * 32}`);
   return (
     <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="mt-2 h-10 w-full" aria-hidden>
-      <polyline points={pts} fill="none" stroke="var(--accent)" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+      <polygon points={`0,40 ${xy.join(" ")} 100,40`} fill={color} opacity={0.12} />
+      <polyline
+        points={xy.join(" ")}
+        fill="none"
+        stroke={color}
+        strokeWidth={1.75}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        vectorEffect="non-scaling-stroke"
+      />
     </svg>
   );
 }
