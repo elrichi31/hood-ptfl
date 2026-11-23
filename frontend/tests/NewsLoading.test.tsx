@@ -54,3 +54,16 @@ it("shows a retry rather than demo news when the feed request fails", async () =
   expect(screen.getByRole("alert").textContent).toContain("Could not load news");
   expect(screen.getByRole("button", { name: /retry/i })).toBeTruthy();
 });
+
+it("never substitutes demo headlines when the portfolio has no news", async () => {
+  vi.mocked(backend).mockImplementation(async (path) => {
+    if (path.endsWith("/news")) {
+      return Response.json({ events: [], portfolioCoverage: { covered: 0, total: 22 }, aiMarketBrief: "", upcomingEvents: [] });
+    }
+    return new Response(null, { status: 503 });
+  });
+  render(await News());
+  expect(screen.getByText("News Intelligence")).toBeTruthy();
+  expect(screen.queryByText(/Bitcoin drops 6%/)).toBeNull();
+  expect(screen.getByText("0 / 22 positions")).toBeTruthy();
+});

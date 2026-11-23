@@ -3,7 +3,8 @@ import { redirect } from "next/navigation";
 import type { Holdings } from "@/components/news/NewsIntelligence";
 import { ProgressiveNews } from "@/components/news/ProgressiveNews";
 import { DashboardRetry } from "@/components/DashboardRetry";
-import { getMockNewsFeed, type NewsFeed } from "@/lib/news";
+import { NewsAutoRefresh } from "@/components/news/NewsAutoRefresh";
+import type { NewsFeed } from "@/lib/news";
 import { prevCloseFor, type Hist } from "@/lib/history";
 import { auth } from "@/lib/auth";
 import { viewerTz } from "@/lib/tz";
@@ -39,12 +40,14 @@ export default async function News() {
     const response = await backend("/api/v1/news");
     if (response.ok) {
       const live: NewsFeed = await response.json();
-      if (Array.isArray(live.events)) feed = live.events.length ? live : getMockNewsFeed();
+      // Real data only: an empty portfolio feed renders its empty state, never sample headlines.
+      if (Array.isArray(live.events)) feed = live;
     }
   } catch { /* Keep a visible retry state instead of failing the whole route. */ }
 
   return (
     <main className="mx-auto w-full max-w-[1280px] flex-1 px-4 pt-6 pb-24 sm:px-6 sm:pt-10">
+      <NewsAutoRefresh />
       {feed ? <ProgressiveNews feed={feed} holdings={holdings} /> : (
         <div role="alert" className="flex items-center gap-3 text-sm text-[var(--muted)]">Could not load news.<DashboardRetry /></div>
       )}

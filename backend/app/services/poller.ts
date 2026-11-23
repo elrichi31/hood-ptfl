@@ -1,3 +1,5 @@
+import { mkdirSync, readFileSync } from 'node:fs'
+import { rename, writeFile } from 'node:fs/promises'
 import logger from '@adonisjs/core/services/logger'
 import db from '@adonisjs/lucid/services/db'
 import PortfolioSnapshot from '#models/portfolio_snapshot'
@@ -32,7 +34,41 @@ type Latest = {
  * Last successful pull, served to the dashboard so page views never hit Robinhood.
  * ponytail: in-memory, empty until the boot poll finishes (getLatest waits for it).
  */
-let latest: Latest | null = null
+const LATEST_FILE = 'tmp/latest.json'
+const PERSISTED_MAX_AGE_MS = 24 * 3600e3
+
+/**
+ * Last pull from the previous run, so a restart serves the dashboard immediately (stale-while-
+ * revalidate) instead of making every page wait for the first, slow Robinhood poll. Anything
+ * malformed or older than a day is ignored.
+ */
+function loadPersisted(): Latest | null {
+  try {
+    const data = JSON.parse(readFileSync(LATEST_FILE, 'utf8')) as Latest
+    const fresh = Date.now() - new Date(data.at).getTime() < PERSISTED_MAX_AGE_MS
+    const valid =
+      Array.isArray(data.balance?.accounts) &&
+      Array.isArray(data.positions?.equities) &&
+      Array.isArray(data.positions?.crypto) &&
+      Array.isArray(data.orders)
+    return fresh && valid ? data : null
+  } catch {
+    return null
+  }
+}
+
+/** Atomic (write + rename) and best effort: a failed write only costs the warm start. */
+async function persistLatest(data: Latest) {
+  try {
+    mkdirSync('tmp', { recursive: true })
+    await writeFile(`${LATEST_FILE}.tmp`, JSON.stringify(data))
+    await rename(`${LATEST_FILE}.tmp`, LATEST_FILE)
+  } catch (err) {
+    logger.warn({ err }, '[robinhood:poll] could not persist latest')
+  }
+}
+
+let latest: Latest | null = loadPersisted()
 let inflight: Promise<void> | null = null
 
 export async function getLatest() {
@@ -95,6 +131,7 @@ async function pollOnce() {
   const snapshot = await saveSnapshot(balance, positions)
 
   latest = { at: snapshot.createdAt.toISO()!, balance, positions, pnl, orders }
+  void persistLatest(latest)
   await computeDailyPnl(3).catch((err) => logger.error({ err }, '[daily-pnl] update failed'))
   logger.info(
     `[robinhood:poll] snapshot #${snapshot.id} saved — total $${balance.total.toFixed(2)}`

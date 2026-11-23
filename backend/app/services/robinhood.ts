@@ -1,4 +1,5 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js'
 import type {
@@ -77,17 +78,79 @@ export const newClient = () => new Client({ name: 'robinhood-dashboard', version
  */
 const READ_ONLY = /^get_/
 
-export async function callTool(name: string, args: Record<string, unknown> = {}) {
-  if (!READ_ONLY.test(name)) throw new Error(`Tool "${name}" is not allowed (read-only app)`)
+type ToolClient = Pick<Client, 'callTool' | 'close'>
+
+/**
+ * One shared MCP session instead of a new client (OAuth handshake + initialize) per call: a single
+ * dashboard refresh makes dozens of calls, and the handshake dominated their latency.
+ *
+ * - Concurrent callers share one in-flight connect and then one session (MCP multiplexes requests).
+ * - A transport-level failure drops the session and retries once on a fresh one, which is exactly
+ *   what every call did before, so the worst case is the old behaviour.
+ * - A protocol answer from the server (McpError other than a timeout/closed connection) means the
+ *   session is healthy: no retry and no teardown.
+ * - The session is recycled after MAX_AGE_MS so a stale server-side session can't linger.
+ */
+export function createToolPool(
+  connect: () => Promise<ToolClient>,
+  { maxAgeMs = 15 * 60_000, now = Date.now }: { maxAgeMs?: number; now?: () => number } = {}
+) {
+  let current: { client: Promise<ToolClient>; at: number } | null = null
+
+  const retire = (client: Promise<ToolClient>, delayMs = 0) => {
+    // Delay lets calls still in flight on a recycled session finish before it closes.
+    const t = setTimeout(() => client.then((c) => c.close()).catch(() => {}), delayMs)
+    t.unref?.()
+  }
+
+  const session = () => {
+    if (current && now() - current.at < maxAgeMs) return current
+    const previous = current
+    const client = connect()
+    const next = { client, at: now() }
+    current = next
+    client.catch(() => {
+      if (current === next) current = null
+    })
+    if (previous) retire(previous.client, 30_000)
+    return next
+  }
+
+  const drop = (entry: { client: Promise<ToolClient> }) => {
+    if (current === entry) current = null
+    retire(entry.client)
+  }
+
+  return async function call(name: string, args: Record<string, unknown>) {
+    for (let attempt = 0; ; attempt++) {
+      const entry = session()
+      try {
+        const client = await entry.client
+        return await client.callTool({ name, arguments: args })
+      } catch (err) {
+        const healthy =
+          err instanceof McpError &&
+          err.code !== ErrorCode.RequestTimeout &&
+          err.code !== ErrorCode.ConnectionClosed
+        if (healthy) throw err
+        drop(entry)
+        if (attempt >= 1) throw err
+      }
+    }
+  }
+}
+
+const pool = createToolPool(async () => {
   const client = newClient()
   await client.connect(
     createTransport(() => {
       throw new Error('Robinhood session expired. Run: node ace robinhood:login')
     })
   )
-  try {
-    return await client.callTool({ name, arguments: args })
-  } finally {
-    await client.close()
-  }
+  return client
+})
+
+export async function callTool(name: string, args: Record<string, unknown> = {}) {
+  if (!READ_ONLY.test(name)) throw new Error(`Tool "${name}" is not allowed (read-only app)`)
+  return pool(name, args)
 }

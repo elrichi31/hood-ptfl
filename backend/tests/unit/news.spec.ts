@@ -1,5 +1,5 @@
 import { test } from '@japa/runner'
-import { categorize, groupArticles } from '#services/news'
+import { categorize, groupArticles, selectFeedEvents, type NewsEventOut } from '#services/news'
 import type { RawArticle } from '#services/news_providers'
 
 function article(overrides: Partial<RawArticle>): RawArticle {
@@ -118,14 +118,82 @@ test.group('news: groupArticles', () => {
     const clusters = groupArticles([
       // Same words, but TypeSafe said different events.
       article({ headline: 'Nvidia stock falls on China news', tickers: ['NVDA'], storyId: 1 }),
-      article({ headline: 'Nvidia stock falls on China news again', tickers: ['NVDA'], storyId: 2 }),
+      article({
+        headline: 'Nvidia stock falls on China news again',
+        tickers: ['NVDA'],
+        storyId: 2,
+      }),
       // No shared words, but TypeSafe said same event.
       article({ headline: 'Apple unveils foldable iPhone', tickers: ['AAPL'], storyId: 3 }),
-      article({ headline: 'Cupertino giant shows bendable handset', tickers: ['AAPL'], storyId: 3 }),
+      article({
+        headline: 'Cupertino giant shows bendable handset',
+        tickers: ['AAPL'],
+        storyId: 3,
+      }),
     ])
     assert.deepEqual(
       clusters.map((c) => c.length),
       [1, 1, 2]
     )
+  })
+})
+
+function event(
+  id: string,
+  tickers: string[],
+  relevance: number,
+  publishedAt: string
+): NewsEventOut {
+  return {
+    id,
+    headline: id,
+    tickers,
+    category: 'company',
+    impact: 'low',
+    sentiment: 'neutral',
+    sentimentScore: 0,
+    relevance,
+    affectsPortfolio: null,
+    alert: null,
+    publishedAt,
+    description: '',
+    aiSummary: '',
+    whyItMatters: '',
+    sources: [],
+  }
+}
+
+test.group('news: selectFeedEvents', () => {
+  test('keeps the top stories by relevance', ({ assert }) => {
+    const events = [
+      event('low', ['AAPL'], 30, '2024-01-15T10:00:00Z'),
+      event('high', ['AAPL'], 90, '2024-01-15T09:00:00Z'),
+      event('mid', ['AAPL'], 60, '2024-01-15T08:00:00Z'),
+    ]
+    const out = selectFeedEvents(events, ['AAPL'], { max: 2, perTicker: 0 })
+    assert.deepEqual(
+      out.map((e) => e.id),
+      ['high', 'mid']
+    )
+  })
+
+  test('a crowded-out holding still gets its latest stories', ({ assert }) => {
+    const events = [
+      event('a1', ['AAPL'], 95, '2024-01-15T10:00:00Z'),
+      event('a2', ['AAPL'], 90, '2024-01-15T09:00:00Z'),
+      event('n-old', ['NVDA'], 25, '2024-01-14T09:00:00Z'),
+      event('n-new', ['NVDA'], 22, '2024-01-15T11:00:00Z'),
+      event('n-mid', ['NVDA'], 24, '2024-01-15T05:00:00Z'),
+    ]
+    const out = selectFeedEvents(events, ['AAPL', 'NVDA'], { max: 2, perTicker: 2 })
+    const nvda = out.filter((e) => e.tickers.includes('NVDA')).map((e) => e.id)
+    assert.sameMembers(nvda, ['n-new', 'n-mid'])
+    assert.lengthOf(out, 4)
+  })
+
+  test('does not duplicate events that cover several holdings', ({ assert }) => {
+    const events = [event('both', ['AAPL', 'NVDA'], 80, '2024-01-15T10:00:00Z')]
+    const out = selectFeedEvents(events, ['AAPL', 'NVDA'], { max: 5, perTicker: 2 })
+    assert.lengthOf(out, 1)
   })
 })

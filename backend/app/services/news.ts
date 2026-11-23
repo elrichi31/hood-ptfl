@@ -1,11 +1,11 @@
 import { DateTime } from 'luxon'
+import db from '@adonisjs/lucid/services/db'
 import logger from '@adonisjs/core/services/logger'
 import NewsArticle from '#models/news_article'
 import { heldPositions } from '#services/poller'
 import { cacheAsync } from '#services/async_cache'
 import {
   fetchFinnhubNews,
-  fetchFinnhubGeneralNews,
   fetchAlphaVantageNews,
   fetchMarketauxNews,
   fetchUpcomingEarnings,
@@ -187,14 +187,25 @@ function buildEvent(cluster: RawArticle[], weightByTicker: Map<string, number>):
   const heuristicRelevance = avgRelevanceRaw * 70 + Math.min(portfolioWeightPct, 30)
   // With TypeSafe: half heuristic, half "does this affect a holding?" probability.
   const relevance = Math.round(
-    Math.max(0, Math.min(100, ai ? heuristicRelevance / 2 + ai.affectsPortfolio * 50 : heuristicRelevance))
+    Math.max(
+      0,
+      Math.min(100, ai ? heuristicRelevance / 2 + ai.affectsPortfolio * 50 : heuristicRelevance)
+    )
   )
   // ai.impact is TypeSafe's expected score on 0..3 and it hedges toward the middle: in practice
   // p50 ≈ 1.0, p90 ≈ 1.4, almost never 2. Cutting at 2/1 labeled nearly everything "medium",
   // so these cuts are tuned to the real spread (~15% high / ~50% medium / ~35% low).
   const impact: NewsEventOut['impact'] = ai
-    ? alert === 'now' || ai.impact >= 1.3 ? 'high' : ai.impact >= 0.95 ? 'medium' : 'low'
-    : relevance >= 75 || Math.abs(avgSentiment) >= 0.6 ? 'high' : relevance >= 45 ? 'medium' : 'low'
+    ? alert === 'now' || ai.impact >= 1.3
+      ? 'high'
+      : ai.impact >= 0.95
+        ? 'medium'
+        : 'low'
+    : relevance >= 75 || Math.abs(avgSentiment) >= 0.6
+      ? 'high'
+      : relevance >= 45
+        ? 'medium'
+        : 'low'
   const sentiment: NewsEventOut['sentiment'] =
     avgSentiment > 0.15 ? 'positive' : avgSentiment < -0.15 ? 'negative' : 'neutral'
 
@@ -254,28 +265,64 @@ function buildMarketBrief(events: NewsEventOut[]): string {
 // Refreshed on every ingest cycle — not persisted, it's just an earnings calendar lookahead.
 let cachedUpcomingEvents: { label: string; date: string }[] = []
 
-/** Fetches from every configured provider and upserts into news_articles, deduped per provider+externalId. */
+const MAX_NEWS_SYMBOLS = 40
+
+/**
+ * Fetches from every configured provider and stores new articles, deduped per provider+externalId.
+ * Only held tickers are requested (largest positions first, so a rate-limited provider drops the
+ * smallest ones, not NVDA) and no general market news is pulled: the feed is portfolio-only.
+ * The articles are stored before any AI step, so fresh headlines reach the feed right away.
+ */
 export async function ingestNews() {
   const { equities } = await heldPositions()
-  const symbols = [...new Set(equities.map((p) => p.symbol))].slice(0, 20)
+  const symbols = [...equities]
+    .sort((a, b) => b.value - a.value)
+    .map((p) => p.symbol)
+    .filter((s, i, all) => all.indexOf(s) === i)
+    .slice(0, MAX_NEWS_SYMBOLS)
 
-  const [finnhub, finnhubGeneral, alphavantage, marketaux, upcoming] = await Promise.all([
+  const [finnhub, alphavantage, marketaux, upcoming] = await Promise.all([
     fetchFinnhubNews(symbols),
-    fetchFinnhubGeneralNews(),
     fetchAlphaVantageNews(symbols),
     fetchMarketauxNews(symbols),
     fetchUpcomingEarnings(symbols),
   ])
   // Provider URLs end up in <a href>: only keep http(s), never javascript:/data: from a bad feed.
-  const articles = [...finnhub, ...finnhubGeneral, ...alphavantage, ...marketaux].filter((a) =>
+  const articles = [...finnhub, ...alphavantage, ...marketaux].filter((a) =>
     /^https?:\/\//i.test(a.url ?? '')
   )
   cachedUpcomingEvents = upcoming
 
-  for (const a of articles) {
-    await NewsArticle.firstOrCreate(
-      { provider: a.provider, externalId: a.externalId },
-      {
+  const inserted = await storeNewArticles(articles)
+
+  // Classification and story linking are slow (one API call each), so they run behind the fetch
+  // instead of holding up the next poll; one pass at a time.
+  void enrich(equities)
+
+  logger.info(
+    `[news:poll] fetched ${articles.length} articles, ${inserted} new (${symbols.length} tickers, ${upcoming.length} upcoming earnings)`
+  )
+}
+
+/** One existence query for the whole batch instead of a lookup per article. */
+async function storeNewArticles(articles: RawArticle[]): Promise<number> {
+  const unique = new Map(articles.map((a) => [`${a.provider}:${a.externalId}`, a]))
+  if (!unique.size) return 0
+  const ids = [...new Set([...unique.values()].map((a) => a.externalId))]
+  const known = new Set<string>()
+  for (let i = 0; i < ids.length; i += 500) {
+    const rows = await NewsArticle.query()
+      .whereIn('externalId', ids.slice(i, i + 500))
+      .select('provider', 'externalId')
+    for (const r of rows) known.add(`${r.provider}:${r.externalId}`)
+  }
+  const fresh = [...unique].filter(([key]) => !known.has(key)).map(([, a]) => a)
+  if (!fresh.length) return 0
+  await db.transaction(async (trx) => {
+    await NewsArticle.createMany(
+      fresh.map((a) => ({
+        provider: a.provider,
+        externalId: a.externalId,
         headline: a.headline,
         description: a.description,
         summary: a.summary,
@@ -285,16 +332,25 @@ export async function ingestNews() {
         publishedAt: DateTime.fromJSDate(a.publishedAt),
         sentimentScore: a.sentimentScore,
         relevanceRaw: a.relevanceRaw,
-      }
+      })),
+      { client: trx }
     )
+  })
+  return fresh.length
+}
+
+let enriching = false
+async function enrich(equities: { symbol: string; value: number }[]) {
+  if (enriching) return
+  enriching = true
+  try {
+    await classifyPending(equities)
+    await linkStories()
+  } catch (err) {
+    logger.error({ err }, '[news:enrich] failed')
+  } finally {
+    enriching = false
   }
-
-  await classifyPending(equities)
-  await linkStories()
-
-  logger.info(
-    `[news:poll] fetched ${articles.length} articles (${symbols.length} tickers, ${upcoming.length} upcoming earnings)`
-  )
 }
 
 const CLASSIFY_PER_CYCLE = 100
@@ -305,7 +361,10 @@ const CLASSIFY_PER_CYCLE = 100
  */
 export async function classifyPending(equities: { symbol: string; value: number }[]) {
   const totalValue = equities.reduce((s, p) => s + p.value, 0) || 1
-  const portfolio = equities.map((p) => ({ symbol: p.symbol, weightPct: (p.value / totalValue) * 100 }))
+  const portfolio = equities.map((p) => ({
+    symbol: p.symbol,
+    weightPct: (p.value / totalValue) * 100,
+  }))
   const pending = await NewsArticle.query()
     .where((q) => q.whereNull('ai').orWhere('ai', 'not like', `%"v":${AI_VERSION},%`))
     .where('publishedAt', '>=', DateTime.now().minus({ days: FEED_LOOKBACK_DAYS }).toJSDate())
@@ -318,7 +377,11 @@ export async function classifyPending(equities: { symbol: string; value: number 
     await Promise.all(
       pending.slice(i, i + 5).map(async (row) => {
         const ai = await classifyArticle(
-          { headline: row.headline, description: row.description, tickers: JSON.parse(row.tickers) },
+          {
+            headline: row.headline,
+            description: row.description,
+            tickers: JSON.parse(row.tickers),
+          },
           portfolio
         )
         if (!ai) return
@@ -377,7 +440,10 @@ export async function linkStories() {
 
     let storyId = a.row.id
     if (candidates.length) {
-      const scores = await sameStoryScores(a.row, candidates.map((c) => c.row))
+      const scores = await sameStoryScores(
+        a.row,
+        candidates.map((c) => c.row)
+      )
       if (!scores) break // API down — retry the rest next cycle
       const best = scores.indexOf(Math.max(...scores))
       if (scores[best] >= SAME_STORY_MIN) {
@@ -388,15 +454,48 @@ export async function linkStories() {
     a.row.storyId = storyId
     await a.row.save()
   }
-  if (processed) logger.info(`[news:typesafe] story-linked ${processed} articles (${linked} joined an existing story)`)
+  if (processed)
+    logger.info(
+      `[news:typesafe] story-linked ${processed} articles (${linked} joined an existing story)`
+    )
 }
 
 const FEED_LOOKBACK_DAYS = 5
 const MIN_RELEVANCE = 20
 const MAX_EVENTS = 40
+const MIN_PER_TICKER = 2
 
 /** Reads the last few days of stored articles, clusters them into events, and scores them against the live portfolio. */
 export const getNewsFeed = cacheAsync(buildNewsFeed, 60_000)
+
+/**
+ * Feed selection: the strongest stories by relevance, plus the latest couple for every holding
+ * that would otherwise be crowded out (a quiet or small position must still show its news).
+ */
+export function selectFeedEvents(
+  events: NewsEventOut[],
+  heldByWeight: string[],
+  { max = MAX_EVENTS, perTicker = MIN_PER_TICKER } = {}
+): NewsEventOut[] {
+  const picked = new Map(
+    [...events]
+      .sort((a, b) => b.relevance - a.relevance)
+      .slice(0, max)
+      .map((e) => [e.id, e])
+  )
+  const newest = [...events].sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
+  for (const ticker of heldByWeight) {
+    let have = [...picked.values()].filter((e) => e.tickers.includes(ticker)).length
+    for (const e of newest) {
+      if (have >= perTicker) break
+      if (!picked.has(e.id) && e.tickers.includes(ticker)) {
+        picked.set(e.id, e)
+        have++
+      }
+    }
+  }
+  return [...picked.values()].sort((a, b) => b.relevance - a.relevance)
+}
 
 async function buildNewsFeed(): Promise<NewsFeedOut> {
   const since = DateTime.now().minus({ days: FEED_LOOKBACK_DAYS }).toJSDate()
@@ -404,33 +503,38 @@ async function buildNewsFeed(): Promise<NewsFeedOut> {
     .where('publishedAt', '>=', since)
     .orderBy('publishedAt', 'desc')
 
-  const raw: RawArticle[] = rows.map((r) => ({
-    provider: r.provider as RawArticle['provider'],
-    externalId: r.externalId,
-    headline: r.headline,
-    description: r.description,
-    summary: r.summary,
-    url: r.url,
-    sourceName: r.sourceName,
-    tickers: JSON.parse(r.tickers),
-    publishedAt: r.publishedAt.toJSDate(),
-    sentimentScore: r.sentimentScore,
-    relevanceRaw: r.relevanceRaw,
-    ai: r.ai ? JSON.parse(r.ai) : null,
-    storyId: r.storyId,
-  }))
-
-  const { equities } = await heldPositions()
+  const { equities, crypto } = await heldPositions()
+  const held = new Set([...equities, ...crypto].map((p) => p.symbol))
   const totalValue = equities.reduce((s, p) => s + p.value, 0) || 1
   const weightByTicker = new Map(equities.map((p) => [p.symbol, (p.value / totalValue) * 100]))
 
+  // Portfolio-only: an article counts only if it is tagged with something we actually hold.
+  const raw: RawArticle[] = rows
+    .map((r) => ({
+      provider: r.provider as RawArticle['provider'],
+      externalId: r.externalId,
+      headline: r.headline,
+      description: r.description,
+      summary: r.summary,
+      url: r.url,
+      sourceName: r.sourceName,
+      tickers: JSON.parse(r.tickers) as string[],
+      publishedAt: r.publishedAt.toJSDate(),
+      sentimentScore: r.sentimentScore,
+      relevanceRaw: r.relevanceRaw,
+      ai: r.ai ? JSON.parse(r.ai) : null,
+      storyId: r.storyId,
+    }))
+    .filter((a) => a.tickers.some((t) => held.has(t)))
+
   const allEvents = groupArticles(raw)
     .map((cluster) => buildEvent(cluster, weightByTicker))
-    .sort((a, b) => b.relevance - a.relevance)
+    .filter((e) => e.relevance >= MIN_RELEVANCE)
 
   // Filtering here (not at ingest) keeps the raw articles around in case the relevance
   // formula changes later, but only surfaces a curated, boundedly-sized feed to the UI.
-  const events = allEvents.filter((e) => e.relevance >= MIN_RELEVANCE).slice(0, MAX_EVENTS)
+  const heldByWeight = [...weightByTicker].sort((a, b) => b[1] - a[1]).map(([t]) => t)
+  const events = selectFeedEvents(allEvents, heldByWeight)
 
   const coveredTickers = new Set(
     events.flatMap((e) => e.tickers).filter((t) => weightByTicker.has(t))
@@ -475,7 +579,9 @@ export function startNewsPolling() {
         // The earnings calendar lives in memory, so reload it now (Finnhub only, cheap) instead of
         // leaving Upcoming events empty until the next full ingest.
         heldPositions()
-          .then(({ equities }) => fetchUpcomingEarnings([...new Set(equities.map((p) => p.symbol))].slice(0, 20)))
+          .then(({ equities }) =>
+            fetchUpcomingEarnings([...new Set(equities.map((p) => p.symbol))].slice(0, 20))
+          )
           .then((upcoming) => (cachedUpcomingEvents = upcoming))
           .catch((err) => logger.error({ err }, '[news:poll] could not load upcoming earnings'))
       }

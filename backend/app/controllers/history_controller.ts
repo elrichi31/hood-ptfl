@@ -7,6 +7,33 @@ import { getReferencePrices } from '#services/enrichment'
 
 let positionsCache: { key: string; body: unknown } | null = null
 
+const FULL_RESOLUTION_MS = 7 * 24 * 3600e3
+const HOUR_MS = 3600e3
+
+/**
+ * Thins old history for the per-symbol payload. The last 7 days keep every snapshot (1D/3D/1W views
+ * and the "today" baselines need the 5-minute detail); older ones keep the last snapshot of each
+ * hour. That is ~3x fewer points over 90 days, and the ranges that use them (1M, Available) are
+ * drawn at a few hundred pixels wide anyway. Input must be in chronological order.
+ */
+export function thinSnapshots<T extends { createdAt: DateTime }>(
+  snapshots: T[],
+  now = Date.now()
+): T[] {
+  const recentFrom = now - FULL_RESOLUTION_MS
+  const out: T[] = []
+  for (const [i, snap] of snapshots.entries()) {
+    const t = snap.createdAt.toMillis()
+    const next = snapshots[i + 1]
+    const keep =
+      t >= recentFrom ||
+      i === snapshots.length - 1 ||
+      Math.floor(next.createdAt.toMillis() / HOUR_MS) !== Math.floor(t / HOUR_MS)
+    if (keep) out.push(snap)
+  }
+  return out
+}
+
 async function buildPositions(snapshots: PortfolioSnapshot[]) {
   const index = new Map(snapshots.map((s, i) => [s.id, i]))
   // Raw rows, not models: ~40k position rows took >1s to hydrate through Lucid, ~60ms raw.
@@ -74,8 +101,8 @@ export default class HistoryController {
   /**
    * Per-symbol quantity/price at every snapshot of the last 90 days, column-oriented
    * (one array per symbol, aligned with `at`, null where the symbol wasn't held).
-   * ponytail: ships the whole month and lets the client slice by range — fine for a
-   * personal portfolio (~a few hundred KB); add server-side range/downsampling if it grows.
+   * Ships the whole window and lets the client slice by range; snapshots older than a week are
+   * thinned to hourly (see thinSnapshots) so the payload stays small.
    */
   async positions({ response }: HttpContext) {
     const snapshots = await PortfolioSnapshot.query()
@@ -86,7 +113,7 @@ export default class HistoryController {
     // Only changes when the poller saves a snapshot, so reuse the last build until then.
     const key = `${snapshots.length}:${snapshots[snapshots.length - 1].id}`
     if (positionsCache?.key !== key) {
-      positionsCache = { key, body: await buildPositions(snapshots) }
+      positionsCache = { key, body: await buildPositions(thinSnapshots(snapshots)) }
     }
     return response.ok(positionsCache.body)
   }

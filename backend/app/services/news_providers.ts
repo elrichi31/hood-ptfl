@@ -78,31 +78,6 @@ export async function fetchFinnhubNews(symbols: string[]): Promise<RawArticle[]>
   return perSymbol.flat()
 }
 
-/** General market headlines (not tied to a single ticker) — mainly feeds the Macro filter. */
-export async function fetchFinnhubGeneralNews(): Promise<RawArticle[]> {
-  const key = env.get('FINNHUB_API_KEY')
-  if (!key) return []
-
-  const items = await safeFetchJson(
-    `https://finnhub.io/api/v1/news?category=general&token=${key}`,
-    'finnhub'
-  )
-  if (!Array.isArray(items)) return []
-  return items.slice(0, 30).map((item: any): RawArticle => ({
-    provider: 'finnhub',
-    externalId: String(item.id),
-    headline: item.headline,
-    description: item.summary ?? '',
-    summary: item.summary ?? '',
-    url: item.url,
-    sourceName: item.source ?? 'Finnhub',
-    tickers: [],
-    publishedAt: new Date(item.datetime * 1000),
-    sentimentScore: estimateSentiment(`${item.headline} ${item.summary ?? ''}`),
-    relevanceRaw: 0.4,
-  }))
-}
-
 /** Earnings dates for held tickers in the next 3 weeks — one Finnhub call, filtered client-side. */
 export async function fetchUpcomingEarnings(
   symbols: string[]
@@ -138,38 +113,43 @@ function parseAlphaVantageDate(raw: string): Date {
 /** NEWS_SENTIMENT covers every held ticker in one call — 25 calls/day, paced by budgetAllows (~1/hour). */
 export async function fetchAlphaVantageNews(symbols: string[]): Promise<RawArticle[]> {
   const key = env.get('ALPHAVANTAGE_API_KEY')
-  if (!key || !symbols.length || !budgetAllows('alphavantage', await callsToday('alphavantage'))) return []
+  if (!key || !symbols.length || !budgetAllows('alphavantage', await callsToday('alphavantage')))
+    return []
 
   const url = `https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers=${symbols.map(encodeURIComponent).join(',')}&apikey=${key}`
   const data = await safeFetchJson(url, 'alphavantage')
   const feed = data?.feed
   if (!Array.isArray(feed)) return []
 
-  return feed.map((item: any): RawArticle => {
-    const held = (item.ticker_sentiment ?? []).filter((t: any) => symbols.includes(t.ticker))
-    const matched = held.length ? held : (item.ticker_sentiment ?? [])
-    const avg = (key2: string) =>
-      matched.length
-        ? matched.reduce((s: number, t: any) => s + Number(t[key2] ?? 0), 0) / matched.length
-        : 0
+  // An article that names none of our tickers is not portfolio news; previously it was tagged with
+  // every held symbol, which made it show up under (and merge stories across) all of them.
+  return feed
+    .filter((item: any) =>
+      (item.ticker_sentiment ?? []).some((t: any) => symbols.includes(t.ticker))
+    )
+    .map((item: any): RawArticle => {
+      const held = (item.ticker_sentiment ?? []).filter((t: any) => symbols.includes(t.ticker))
+      const matched = held
+      const avg = (key2: string) =>
+        matched.length
+          ? matched.reduce((s: number, t: any) => s + Number(t[key2] ?? 0), 0) / matched.length
+          : 0
 
-    return {
-      provider: 'alphavantage',
-      externalId: item.url,
-      headline: item.title,
-      description: item.summary ?? '',
-      summary: item.summary ?? '',
-      url: item.url,
-      sourceName: item.source ?? 'Alpha Vantage',
-      tickers: held.length ? held.map((t: any) => t.ticker) : symbols,
-      publishedAt: parseAlphaVantageDate(item.time_published),
-      sentimentScore: matched.length
-        ? avg('ticker_sentiment_score')
-        : Number(item.overall_sentiment_score ?? 0),
-      relevanceRaw: matched.length ? avg('relevance_score') : 0.5,
-      topics: (item.topics ?? []).map((t: any) => t.topic),
-    }
-  })
+      return {
+        provider: 'alphavantage',
+        externalId: item.url,
+        headline: item.title,
+        description: item.summary ?? '',
+        summary: item.summary ?? '',
+        url: item.url,
+        sourceName: item.source ?? 'Alpha Vantage',
+        tickers: held.map((t: any) => t.ticker),
+        publishedAt: parseAlphaVantageDate(item.time_published),
+        sentimentScore: avg('ticker_sentiment_score'),
+        relevanceRaw: avg('relevance_score'),
+        topics: (item.topics ?? []).map((t: any) => t.topic),
+      }
+    })
 }
 
 /**
