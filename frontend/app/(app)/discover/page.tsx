@@ -18,10 +18,15 @@ export default async function DiscoverPage() {
 
   const empty: Discover = { status: "idle", builtAt: null, items: [], portfolio: null };
   let d: Discover = empty;
+  let loadError: string | null = null;
   try {
     const res = await backend("/api/v1/discover");
     if (res.ok) d = await res.json();
-  } catch { /* Slow or unreachable backend: show the empty state rather than crashing the route. */ }
+    else loadError = `Could not load Discover (backend returned ${res.status}).`;
+  } catch {
+    // Slow or unreachable backend: show a message rather than crashing the route.
+    loadError = "Could not load Discover (the backend did not respond in time). Reload in a moment.";
+  }
   if (!Array.isArray(d.items)) d = empty;
   const diversifiers = d.items.filter((i) => i.fit && i.fit.deltaVolAt5 < 0).length;
 
@@ -51,8 +56,8 @@ export default async function DiscoverPage() {
             <p className="text-sm text-[var(--muted)]">
               {d.status === "building"
                 ? "Building your list: Robinhood data plus Finnhub for ~70 names. This takes about 10 minutes after a restart, then refreshes daily. Reload in a bit."
-                : !res.ok
-                  ? `Could not load Discover (backend returned ${res.status}).`
+                : loadError
+                  ? loadError
                   : "No candidates yet. Discover needs FINNHUB_API_KEY and at least one stock holding."}
             </p>
           )}
