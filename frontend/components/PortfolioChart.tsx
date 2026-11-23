@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { isRegular } from "@/lib/history";
 import { useWidth } from "@/lib/useWidth";
+import { lttbIndices } from "@/lib/downsample";
 
 type Snapshot = { totalValue: number; cash: number; at: string; pnl?: number };
 
@@ -35,18 +36,27 @@ type ChartProps = { tz?: string } & (
   | { metric: "pnl"; data: (Snapshot & { pnl: number })[] }
 );
 
-export function PortfolioChart({ data, tz = "America/New_York", metric = "portfolio" }: ChartProps) {
+export function PortfolioChart({ data: rawData, tz = "America/New_York", metric = "portfolio" }: ChartProps) {
   const [wrapRef, W] = useWidth<HTMLDivElement>();
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<number | null>(null);
 
-  if (data.length < 2) {
+  if (rawData.length < 2) {
     return (
       <p className="text-sm text-[var(--muted)]">
         Your portfolio history is still being collected. A point is saved every 5 minutes during market hours and every 30 minutes otherwise. The chart will appear once there are at least two saved points.
       </p>
     );
   }
+
+  // Thousands of 5-minute snapshots look like noise; draw ~1 vertex per 3px instead, keeping the
+  // shape (peaks/dips) via LTTB. Hover and the tooltip use the same reduced series.
+  const maxPoints = Math.max(60, Math.round(W / 3));
+  const data = (
+    rawData.length > maxPoints
+      ? lttbIndices(rawData.map((d) => (metric === "pnl" ? (d as { pnl: number }).pnl : d.totalValue)), maxPoints).map((i) => rawData[i])
+      : rawData
+  ) as typeof rawData;
 
   const narrow = W < 520;
   const H = narrow ? 200 : 260;
