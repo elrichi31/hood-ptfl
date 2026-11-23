@@ -6,11 +6,9 @@ const Bone = ({ className = "" }: { className?: string }) => (
 
 function CardBone({ className = "", children }: { className?: string; children: React.ReactNode }) {
   return (
-    <div className={`rounded-xl bg-[var(--surface-secondary)] p-1 shadow-[inset_0_0_0_1px_var(--border)] ${className}`}>
-      <div className="px-2 pt-1.5 pb-2">
-        <Bone className="h-4 w-28" />
-      </div>
-      <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3 sm:p-4">{children}</div>
+    <div className={`rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 sm:p-5 ${className}`}>
+      <Bone className="mb-3 h-4 w-28" />
+      {children}
     </div>
   );
 }

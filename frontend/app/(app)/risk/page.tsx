@@ -10,6 +10,7 @@ import { Card } from "@/components/Card";
 import { TickerLogo } from "@/components/TickerLogo";
 import { ProjectionChart, type Band } from "@/components/ProjectionChart";
 import { RiskSimulator } from "@/components/RiskSimulator";
+import { DashboardRetry } from "@/components/DashboardRetry";
 
 type Stats = { returnPct: number; volatilityPct: number; sharpe: number; sortino: number | null; maxDrawdownPct: number } | null;
 type Risk = {
@@ -96,19 +97,46 @@ function Legend({ items }: { items: [string, string][] }) {
 const betaWord = (b: number) =>
   b >= 1.15 ? "swings harder than the market" : b <= 0.85 ? "calmer than the market" : "moves about with the market";
 
+type RiskResult = { ok: true; data: Risk } | { ok: false; message: string };
+
+async function loadRisk(): Promise<RiskResult> {
+  try {
+    const res = await backend("/api/v1/risk", undefined, { timeoutMs: 60_000 });
+    if (!res.ok) return { ok: false, message: `Could not load risk (backend returned ${res.status}).` };
+    const data = (await res.json()) as Risk | null;
+    if (!data || !Array.isArray(data.positions) || !Array.isArray(data.scenarios) || !data.series || !data.vsMarket) {
+      return { ok: false, message: "Risk data isn't ready yet. Please retry in a moment." };
+    }
+    return { ok: true, data };
+  } catch (error) {
+    const timeout = error instanceof Error && ["TimeoutError", "AbortError"].includes(error.name);
+    return {
+      ok: false,
+      message: timeout
+        ? "Risk is still being calculated (it takes a while after a restart). Please retry in a minute."
+        : "Could not reach the risk service. Please retry.",
+    };
+  }
+}
+
 export default async function RiskPage() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) redirect("/login");
 
-  const res = await backend("/api/v1/risk");
-  if (!res.ok) {
+  // First build after a backend (re)start recomputes 7 years of history + simulations, so give it
+  // far longer than the default 10s deadline and never let a timeout/bad JSON crash the page.
+  const loaded = await loadRisk();
+  if (!loaded.ok) {
     return (
-      <main className="flex flex-1 items-center justify-center">
-        <p className="text-[var(--danger)]">Could not load risk (backend returned {res.status}).</p>
+      <main className="flex flex-1 items-center justify-center px-4">
+        <div role="alert" className="flex max-w-sm flex-col items-center gap-3 text-center">
+          <p className="text-[var(--danger)]">{loaded.message}</p>
+          <DashboardRetry />
+        </div>
       </main>
     );
   }
-  const r: Risk = await res.json();
+  const r = loaded.data;
   const worstScenario = Math.max(...r.scenarios.map((s) => Math.abs(s.loss)), 1);
   const assumed = r.positions.filter((p) => p.betaAssumed !== null && p.betaAssumed !== 0);
   const worstStress = Math.max(1, ...r.stress.flatMap((s) => [Math.abs(s.portfolioPct), Math.abs(s.spyPct)]));
