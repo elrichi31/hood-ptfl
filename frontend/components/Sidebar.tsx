@@ -14,7 +14,7 @@ import {
   ShieldAlert,
   BellRing,
   Settings,
-  LineChart,
+  Feather,
   PanelLeft,
   Search,
   ChevronsUpDown,
@@ -68,8 +68,8 @@ export function Sidebar({
       <div className={`flex h-9 shrink-0 items-center gap-2.5 px-1 ${collapsed ? "justify-center" : ""}`}>
         {!collapsed && (
           <>
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--foreground)] text-[var(--background)]">
-              <LineChart size={15} strokeWidth={2.25} />
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-[var(--accent-foreground)]">
+              <Feather size={15} strokeWidth={2.25} />
             </span>
             <p className="flex-1 truncate text-base font-semibold">Robinhood</p>
           </>
@@ -86,7 +86,7 @@ export function Sidebar({
       </div>
 
       {!collapsed && (
-        <div className="mt-3 flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5">
+        <div className="mt-3 flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface-secondary)] px-3 py-1.5">
           <Search size={15} strokeWidth={1.75} className="shrink-0 text-[var(--muted)]" />
           <input
             type="text"
@@ -113,7 +113,7 @@ export function Sidebar({
 
       <Dropdown>
         <Dropdown.Trigger
-          className={`flex w-full items-center gap-2.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2 text-left shadow-[0_4px_7px_rgba(0,0,0,0.04)] hover:bg-[var(--surface-hover)] ${collapsed ? "justify-center" : ""}`}
+          className={`flex w-full items-center gap-2.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2 text-left hover:bg-[var(--surface-hover)] ${collapsed ? "justify-center" : ""}`}
         >
           <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--surface-secondary)] text-xs font-medium">
             {initials}
@@ -164,10 +164,10 @@ function NavLink({ href, label, icon: Icon, active, collapsed }: NavEntry & { ac
     <Link
       href={href}
       title={collapsed ? label : undefined}
-      className={`flex h-8 items-center gap-2.5 rounded-lg border px-2.5 text-[13px] transition-colors ${collapsed ? "justify-center" : ""} ${
+      className={`flex h-9 items-center gap-2.5 rounded-full border border-transparent px-3 text-[13px] transition-colors ${collapsed ? "justify-center" : ""} ${
         active
-          ? "border-[var(--border)] bg-[var(--surface)] font-medium text-[var(--foreground)] shadow-[0_4px_7px_rgba(0,0,0,0.04)]"
-          : "border-transparent text-[var(--secondary-foreground)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)]"
+          ? "bg-[var(--accent-soft)] font-semibold text-[var(--accent)]"
+          : "text-[var(--secondary-foreground)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)]"
       }`}
     >
       <NavIcon icon={Icon} />

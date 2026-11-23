@@ -59,7 +59,7 @@ export function AppShell({
           onToggle={drawer ? () => setDrawer(false) : toggleCollapsed}
         />
       </div>
-      <div className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden bg-[var(--surface)] md:shadow-[inset_1px_0_0_var(--border)]">
+      <div className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden bg-[var(--surface)] md:border-l md:border-[var(--border)]">
         <TopBar onMenu={() => setDrawer(true)} />
         <div className="flex flex-1 flex-col overflow-y-auto">{children}</div>
       </div>

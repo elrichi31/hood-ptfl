@@ -1,68 +1,77 @@
 @import "@heroui/react/styles";
 
 /*
- * Notion-style retheme of HeroUI's default tokens. Unlayered so it wins over
- * HeroUI's `layer(theme)` defaults regardless of import order. Dark mode
- * toggles the `data-theme` attribute on <html> (see ThemeToggle.tsx) — same
- * attribute HeroUI's own dark block already keys off.
+ * Robinhood-style retheme of HeroUI's default tokens: pure-black canvas in dark,
+ * signature neon green for gains / primary actions, orange-red for losses, flat
+ * borderless-feeling cards and pill buttons. Unlayered so it wins over HeroUI's
+ * `layer(theme)` defaults regardless of import order. Dark mode toggles the
+ * `data-theme` attribute on <html> (see TopBar's ThemeButton).
  */
 :root {
-  --background: #f8f8f8;
-  --foreground: #1f2937;
+  --background: #ffffff;
+  --foreground: #000000;
   --surface: #ffffff;
   --surface-foreground: var(--foreground);
-  --surface-secondary: #f6f6f6;
-  --surface-hover: #f0f0f0;
-  --muted: #6b7280;
-  --secondary-foreground: #4b5563;
-  --border: #e5e7eb;
-  --separator: #e5e7eb;
-  --hatch: rgba(0, 0, 0, 0.035);
-  --accent: #2383e2;
+  --surface-secondary: #f5f8fa;
+  --surface-hover: #eef2f5;
+  --muted: #5e6c76;
+  --secondary-foreground: #2b3640;
+  --border: #e3e9ed;
+  --separator: #e3e9ed;
+  --hatch: transparent;
+  --accent: #00a804; /* green darkened enough to read as text/lines on white */
   --accent-foreground: #ffffff;
   --accent-soft: color-mix(in oklab, var(--accent) 12%, transparent);
   --accent-soft-foreground: var(--accent);
-  --danger: #e03e3e;
-  --success: #0f7b6c;
-  --warning: #d9a521;
-  --crypto: #c9750f; /* second categorical slot, allocation chart — validated with --accent via dataviz's validate_palette.js */
-  --radius: 0.5rem;
-  --field-radius: 0.5rem;
+  --danger: #ff5000;
+  --success: #00a804;
+  --warning: #f5a400;
+  --crypto: #7b61ff; /* second categorical slot (allocation chart): violet, distinct from green + orange-red */
+  --radius: 0.75rem;
+  --field-radius: 9999px;
   --surface-shadow: none;
   --field-shadow: none;
+  --field-background: var(--surface-secondary);
+  --field-foreground: var(--foreground);
+  --field-placeholder: var(--muted);
+  --field-border: var(--border);
+  --field-border-hover: var(--muted);
+  --field-border-focus: var(--accent);
+  --field-border-width: 1px;
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --background: #141414;
-  --foreground: #e6e6e5;
-  --surface: #1c1c1c;
+  --background: #000000;
+  --foreground: #ffffff;
+  --surface: #0d0e10;
   --surface-foreground: var(--foreground);
-  --surface-secondary: #222222;
-  --surface-hover: #2a2a2a;
-  --muted: #9b9a97;
-  --secondary-foreground: #b4b4b2;
-  --border: #2f2f2f;
-  --separator: #2f2f2f;
-  --hatch: rgba(255, 255, 255, 0.03);
-  --accent: #529cca;
-  --accent-foreground: #191919;
+  --surface-secondary: #16181b;
+  --surface-hover: #1e2125;
+  --muted: #8b98a3;
+  --secondary-foreground: #c4cdd4;
+  --border: #1f2226;
+  --separator: #1f2226;
+  --hatch: transparent;
+  --accent: #00c805; /* Robinhood green */
+  --accent-foreground: #000000;
   --accent-soft: color-mix(in oklab, var(--accent) 16%, transparent);
   --accent-soft-foreground: var(--accent);
-  --danger: #ff7369;
-  --success: #4dab9a;
-  --warning: #e0b341;
-  --crypto: #b8791f;
+  --danger: #ff5000; /* Robinhood orange-red */
+  --success: #00c805;
+  --warning: #ffb800;
+  --crypto: #9b87ff;
 }
 
 @theme inline {
-  --font-sans: var(--font-inter);
+  --font-sans: var(--font-sans-app);
   --font-mono: var(--font-geist-mono);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
+  letter-spacing: -0.005em;
 }
 
 /* Tabular figures for every money/quantity value in the app. */
@@ -70,9 +79,21 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Diagonal hatch behind card headers (Kravio look). */
+/* Pill buttons everywhere (HeroUI primary button = Robinhood's green CTA). */
+.button,
+[data-slot="button"] {
+  border-radius: 9999px;
+  font-weight: 600;
+}
+
+/* Selection + focus in brand green. */
+::selection {
+  background: color-mix(in oklab, var(--accent) 30%, transparent);
+}
+
+/* Decorative hatch strip is retired in the flat Robinhood look; kept as a no-op for callers. */
 .hatch {
-  background-image: repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 7px);
+  background-image: none;
 }
 
 /* News ticker tape: content is rendered twice, so sliding by -50% loops seamlessly. */

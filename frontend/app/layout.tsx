@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
-import { Inter, Geist_Mono } from "next/font/google";
+import { DM_Sans, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({
-  variable: "--font-inter",
+// Geometric, friendly grotesque — the closest free match to Robinhood's Capsule Sans.
+const inter = DM_Sans({
+  variable: "--font-sans-app",
   subsets: ["latin"],
 });
 

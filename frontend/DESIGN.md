@@ -4,30 +4,25 @@
 
 ## World
 
-Notion's page anatomy, restyled onto HeroUI v3's token system (`app/globals.css` overrides `@heroui/react/styles`' CSS custom properties, unlayered so they win over the library defaults). Light + dark, toggled via `data-theme` on `<html>` (`components/ThemeToggle.tsx`), persisted to `localStorage`, defaulting to the OS preference on first visit. A blocking inline script in `app/layout.tsx` sets the attribute before paint — no flash.
+Robinhood's look and feel, on HeroUI v3's token system (`app/globals.css` overrides `@heroui/react/styles`' CSS custom properties, unlayered so they win over the library defaults). Pure-black canvas in dark (default), clean white in light, toggled via `data-theme` on `<html>`. A blocking inline script in `app/layout.tsx` sets the attribute before paint. Flat cards with a hairline border, pill buttons/inputs/nav, signature green for gains and primary actions, orange-red for losses. Brand mark is a lucide `Feather` in a green circle (no trademarked logo asset).
 
 ## Palette
 
-- `--background` / `--surface`: `#ffffff`
-- `--foreground`: `#191919`
-- `--surface-secondary` / `--surface-hover`: `#f7f7f5` / `#f2f1ee`
-- `--muted` (secondary text, labels): `#9b9a97`
-- `--border` / `--separator` (all dividers, 1px, no card shadows): `#e9e9e7`
-- `--accent` (links, primary button, focus ring, page icon): `#2383e2`
-- `--danger` / `--success` (return % only): `#e03e3e` / `#0f7b6c`
-- Ticker chips: deterministic `oklch(0.55 0.12 <hash(symbol)>)` per row — see `tickerHue()` in `app/page.tsx`.
+Dark (default): `--background` `#000000`, `--surface` `#0d0e10`, `--surface-secondary` `#16181b`, `--surface-hover` `#1e2125`, `--border` `#1f2226`, `--foreground` `#ffffff`, `--muted` `#8b98a3`, `--accent`/`--success` `#00c805` (Robinhood green, black text on it), `--danger` `#ff5000`, `--warning` `#ffb800`, `--crypto` `#9b87ff`.
 
-Dark (`[data-theme="dark"]`): background `#191919`, foreground `#e6e6e5`, surface-hover `#2a2a2a`, border `#2f2f2f`, accent `#529cca` (lightened for contrast on near-black), danger `#ff7369`, success `#4dab9a`.
+Light: background/surface `#ffffff`, `--surface-secondary` `#f5f8fa`, `--border` `#e3e9ed`, `--foreground` `#000000`, `--muted` `#5e6c76`, `--accent`/`--success` `#00a804` (darkened for contrast on white), `--danger` `#ff5000`, `--crypto` `#7b61ff`.
+
+Field tokens (`--field-*`) are set so inputs have a tinted fill + hairline border in both themes. Ticker chips: deterministic `oklch` per symbol — see `tickerHue()`.
 
 ## Type
 
-Inter (`--font-inter`, via `next/font/google`) for everything except money/quantity figures, which use Geist Mono (`--font-geist-mono`) with `font-variant-numeric: tabular-nums` (`.font-figures` utility in `globals.css`). Page title 2.5rem/700; section labels 11px uppercase tracked gray; body/table 14px (`text-sm`).
+DM Sans (`--font-sans-app`, via `next/font/google`; closest free match to Robinhood's Capsule Sans) for everything except money/quantity figures, which use Geist Mono with `font-variant-numeric: tabular-nums` (`.font-figures`).
 
 ## Components
 
 HeroUI (`@heroui/react`, Tailwind v4, no Provider needed): `Form`, `TextField`, `Label`, `Input`, `FieldError`, `Button` (auth forms), `Avatar` + `Dropdown` (top-bar user menu), `Modal` (symbol enrichment). Position tables are plain semantic `<table>` styled with the same CSS variables — HeroUI's `Table` is a React Aria collection component built for sortable/selectable interactive tables; these are static read-only listings, so a native table was the leaner, equally-on-brand choice (still 100% HeroUI's palette/tokens).
 
-`Card` (`components/Card.tsx`) is hand-rolled, not `@heroui/react`'s: HeroUI's default `Card` ships a ~32px radius and no border (it relies on `shadow-surface`, which is `--surface-shadow`, zeroed out globally for the flat look) — invisible on a same-color page background. Ours: `border border-[var(--border)] bg-[var(--surface)] rounded-[var(--radius)] p-5`, optional uppercase-label title, same tokens as everything else.
+`Card` (`components/Card.tsx`, now a single flat `rounded-2xl` panel with hairline border and small muted title; the old hatched two-layer frame is retired) is hand-rolled, not `@heroui/react`'s: HeroUI's default `Card` ships a ~32px radius and no border (it relies on `shadow-surface`, which is `--surface-shadow`, zeroed out globally for the flat look) — invisible on a same-color page background. Ours: `border border-[var(--border)] bg-[var(--surface)] rounded-[var(--radius)] p-5`, optional uppercase-label title, same tokens as everything else.
 
 `--radius` / `--field-radius`: `0.375rem` (tighter than HeroUI's 0.5rem default, closer to Notion's chrome).
 
