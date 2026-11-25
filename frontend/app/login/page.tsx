@@ -13,6 +13,11 @@ export default function LoginPage() {
           <p className="text-sm text-[var(--muted)]">Private Market Analytics — authorized users only</p>
         </div>
         <AuthForm />
+        <p className="mt-8 text-center text-xs leading-relaxed text-[var(--muted)]">
+          Zenlor Labs is an independent, private analytics tool. It is not affiliated with, endorsed
+          by, or operated by Robinhood Markets, Inc. or any of its affiliates. Robinhood is a
+          trademark of its respective owner. This site never asks for your Robinhood credentials.
+        </p>
       </div>
     </main>
   );
