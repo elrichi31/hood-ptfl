@@ -14,13 +14,13 @@ import {
   ShieldAlert,
   BellRing,
   Settings,
-  Feather,
   PanelLeft,
   Search,
   ChevronsUpDown,
   type LucideIcon,
   Loader2,
 } from "lucide-react";
+import { ZenlorMark } from "@/components/ZenlorMark";
 import { signOut } from "@/lib/auth-client";
 
 type NavEntry = { href: string; label: string; icon: LucideIcon };
@@ -69,9 +69,9 @@ export function Sidebar({
         {!collapsed && (
           <>
             <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-[var(--accent-foreground)]">
-              <Feather size={15} strokeWidth={2.25} />
+              <ZenlorMark size={15} />
             </span>
-            <p className="flex-1 truncate text-base font-semibold">Robinhood</p>
+            <p className="flex-1 truncate text-base font-semibold">Zenlor Labs</p>
           </>
         )}
         <button

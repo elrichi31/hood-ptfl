@@ -1,7 +1,7 @@
 @import "@heroui/react/styles";
 
 /*
- * Robinhood-style retheme of HeroUI's default tokens: pure-black canvas in dark,
+ * Zenlor Labs retheme of HeroUI's default tokens: pure-black canvas in dark,
  * signature neon green for gains / primary actions, orange-red for losses, flat
  * borderless-feeling cards and pill buttons. Unlayered so it wins over HeroUI's
  * `layer(theme)` defaults regardless of import order. Dark mode toggles the
@@ -19,12 +19,12 @@
   --border: #e3e9ed;
   --separator: #e3e9ed;
   --hatch: transparent;
-  --accent: #00a804; /* green darkened enough to read as text/lines on white */
+  --accent: #059669; /* Zenlor green, darkened to read as text/lines on white */
   --accent-foreground: #ffffff;
   --accent-soft: color-mix(in oklab, var(--accent) 12%, transparent);
   --accent-soft-foreground: var(--accent);
   --danger: #ff5000;
-  --success: #00a804;
+  --success: #059669;
   --warning: #f5a400;
   --crypto: #7b61ff; /* second categorical slot (allocation chart): violet, distinct from green + orange-red */
   --radius: 0.75rem;
@@ -53,12 +53,12 @@
   --border: #1f2226;
   --separator: #1f2226;
   --hatch: transparent;
-  --accent: #00c805; /* Robinhood green */
+  --accent: #10b981; /* Zenlor green */
   --accent-foreground: #000000;
   --accent-soft: color-mix(in oklab, var(--accent) 16%, transparent);
   --accent-soft-foreground: var(--accent);
-  --danger: #ff5000; /* Robinhood orange-red */
-  --success: #00c805;
+  --danger: #ff5000;
+  --success: #10b981;
   --warning: #ffb800;
   --crypto: #9b87ff;
 }
@@ -79,7 +79,7 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Pill buttons everywhere (HeroUI primary button = Robinhood's green CTA). */
+/* Pill buttons everywhere (HeroUI primary button = green CTA). */
 .button,
 [data-slot="button"] {
   border-radius: 9999px;
@@ -91,7 +91,7 @@ body {
   background: color-mix(in oklab, var(--accent) 30%, transparent);
 }
 
-/* Decorative hatch strip is retired in the flat Robinhood look; kept as a no-op for callers. */
+/* Decorative hatch strip is retired in the flat look; kept as a no-op for callers. */
 .hatch {
   background-image: none;
 }

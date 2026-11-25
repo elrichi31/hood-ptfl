@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { DM_Sans, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-// Geometric, friendly grotesque — the closest free match to Robinhood's Capsule Sans.
+// Geometric, friendly grotesque for UI text.
 const inter = DM_Sans({
   variable: "--font-sans-app",
   subsets: ["latin"],
@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Portfolio",
-  description: "Personal Robinhood portfolio dashboard.",
+  title: "Zenlor Labs — Private Market Analytics",
+  description: "Zenlor Labs private portfolio analytics (invite-only)."
 };
 
 // Runs before paint so the theme is correct on first frame (no flash). Defaults to dark

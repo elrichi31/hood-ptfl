@@ -4,13 +4,13 @@
 
 ## World
 
-Robinhood's look and feel, on HeroUI v3's token system (`app/globals.css` overrides `@heroui/react/styles`' CSS custom properties, unlayered so they win over the library defaults). Pure-black canvas in dark (default), clean white in light, toggled via `data-theme` on `<html>`. A blocking inline script in `app/layout.tsx` sets the attribute before paint. Flat cards with a hairline border, pill buttons/inputs/nav, signature green for gains and primary actions, orange-red for losses. Brand mark is a lucide `Feather` in a green circle (no trademarked logo asset).
+Zenlor Labs look and feel, on HeroUI v3's token system (`app/globals.css` overrides `@heroui/react/styles`' CSS custom properties, unlayered so they win over the library defaults). Pure-black canvas in dark (default), clean white in light, toggled via `data-theme` on `<html>`. A blocking inline script in `app/layout.tsx` sets the attribute before paint. Flat cards with a hairline border, pill buttons/inputs/nav, signature green for gains and primary actions, orange-red for losses. Brand mark is the Zenlor Labs "Z" monogram (`components/ZenlorMark.tsx`) in a Zenlor-green circle.
 
 ## Palette
 
-Dark (default): `--background` `#000000`, `--surface` `#0d0e10`, `--surface-secondary` `#16181b`, `--surface-hover` `#1e2125`, `--border` `#1f2226`, `--foreground` `#ffffff`, `--muted` `#8b98a3`, `--accent`/`--success` `#00c805` (Robinhood green, black text on it), `--danger` `#ff5000`, `--warning` `#ffb800`, `--crypto` `#9b87ff`.
+Dark (default): `--background` `#000000`, `--surface` `#0d0e10`, `--surface-secondary` `#16181b`, `--surface-hover` `#1e2125`, `--border` `#1f2226`, `--foreground` `#ffffff`, `--muted` `#8b98a3`, `--accent`/`--success` `#10b981` (Zenlor green, black text on it), `--danger` `#ff5000`, `--warning` `#ffb800`, `--crypto` `#9b87ff`.
 
-Light: background/surface `#ffffff`, `--surface-secondary` `#f5f8fa`, `--border` `#e3e9ed`, `--foreground` `#000000`, `--muted` `#5e6c76`, `--accent`/`--success` `#00a804` (darkened for contrast on white), `--danger` `#ff5000`, `--crypto` `#7b61ff`.
+Light: background/surface `#ffffff`, `--surface-secondary` `#f5f8fa`, `--border` `#e3e9ed`, `--foreground` `#000000`, `--muted` `#5e6c76`, `--accent`/`--success` `#059669` (darkened for contrast on white), `--danger` `#ff5000`, `--crypto` `#7b61ff`.
 
 Field tokens (`--field-*`) are set so inputs have a tinted fill + hairline border in both themes. Ticker chips: deterministic `oklch` per symbol — see `tickerHue()`.
 
